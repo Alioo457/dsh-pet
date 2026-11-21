@@ -23,6 +23,12 @@ import { createRequestSecurity } from '../standalone/request-security.ts';
 import { installDesktopAuth, type DesktopSession } from './desktop-auth.ts';
 import { subscribeCodexWorkStatus } from './codex-status.ts';
 import { createPomodoro, pomodoroRoute, type PomodoroView } from './pomodoro.ts';
+import {
+  createSittingReminder,
+  sittingReminderRoute,
+  SITTING_NOTICE_MS,
+  type SittingReminderNotice,
+} from './sitting-reminder.ts';
 import { startRouter } from './router.ts';
 import { ROUTE_SEGMENT } from '../shared/constants.ts';
 import type { DesktopWorkStatusSubscription } from '../host/work-status.ts';
@@ -31,10 +37,14 @@ import type { DesktopWorkStatusSubscription } from '../host/work-status.ts';
  * `electron` 由 Electron 运行时提供，不是本包依赖；只声明实际用到的成员。
  * 静态 `import 'electron'` 会让 `tsc --noEmit` 找不到类型而整仓变红。
  */
+interface DesktopTimerEvents {
+  'pet:pomodoro': PomodoroView;
+  'pet:sitting-reminder': SittingReminderNotice | null;
+}
 interface WebContentsLike {
   getURL(): string;
   isDestroyed(): boolean;
-  send(channel: 'pet:pomodoro', view: PomodoroView): void;
+  send<Event extends keyof DesktopTimerEvents>(channel: Event, view: DesktopTimerEvents[Event]): void;
   on(event: 'did-finish-load', listener: () => void): void;
   on(
     event: 'console-message',
@@ -111,22 +121,34 @@ async function boot(): Promise<void> {
   let port = 0;
   const rendererPath = join(packageRoot, 'runtime/electron-helper/index.html');
   const rendererUrl = pathToFileURL(rendererPath).href;
-  const sendPomodoro = (contents: WebContentsLike, view: PomodoroView): void => {
-    if (!contents.isDestroyed() && contents.getURL().split(/[?#]/, 1)[0] === rendererUrl)
-      contents.send('pet:pomodoro', view);
+  const sendDesktopTimer = <Event extends keyof DesktopTimerEvents>(
+    contents: WebContentsLike,
+    channel: Event,
+    view: DesktopTimerEvents[Event],
+  ): void => {
+    if (!contents.isDestroyed() && contents.getURL().split(/[?#]/, 1)[0] === rendererUrl) contents.send(channel, view);
+  };
+  const showTimerBalloon = (title: string, notice: SittingReminderNotice): void => {
+    (
+      globalThis as { __dshPetShowBalloon?: (title: string, content: string, until: number) => void }
+    ).__dshPetShowBalloon?.(title, notice.text, notice.until);
   };
   const pomodoro = createPomodoro({
     file: join(dshHomeDir(), 'dsh-pet', 'pomodoro.json'),
     onChange(view, announcement) {
-      for (const window of BrowserWindow.getAllWindows()) sendPomodoro(window.webContents, view);
-      if (announcement && view.notice) {
-        (
-          globalThis as { __dshPetShowBalloon?: (title: string, content: string, until: number) => void }
-        ).__dshPetShowBalloon?.('番茄钟', announcement, view.notice.until);
-      }
+      for (const window of BrowserWindow.getAllWindows()) sendDesktopTimer(window.webContents, 'pet:pomodoro', view);
+      if (announcement && view.notice) showTimerBalloon('番茄钟', view.notice);
     },
   });
-  routes.push(pomodoroRoute(pomodoro));
+  const sittingReminder = createSittingReminder({
+    file: join(dshHomeDir(), 'dsh-pet', 'sitting-reminder.json'),
+    onNotice(notice) {
+      for (const window of BrowserWindow.getAllWindows())
+        sendDesktopTimer(window.webContents, 'pet:sitting-reminder', notice);
+      if (notice) showTimerBalloon('久坐提醒', notice);
+    },
+  });
+  routes.push(pomodoroRoute(pomodoro), sittingReminderRoute(sittingReminder));
 
   // 与 CLI 同一套安全模型：令牌只经「配置页地址的 #token=」递给浏览器，不进日志
   const security = createRequestSecurity();
@@ -176,7 +198,10 @@ async function boot(): Promise<void> {
     contents.on('console-message', (_e, level, message, line, source) => {
       log(`渲染端[${level}] ${message} (${source}:${line})`);
     });
-    contents.on('did-finish-load', () => sendPomodoro(contents, pomodoro.snapshot()));
+    contents.on('did-finish-load', () => {
+      sendDesktopTimer(contents, 'pet:pomodoro', pomodoro.snapshot());
+      sendDesktopTimer(contents, 'pet:sitting-reminder', sittingReminder.notice());
+    });
   });
   // 必须早于 Helper 的 whenReady 回调建出 file 渲染页。
   void app.whenReady().then(() => {
@@ -189,7 +214,7 @@ async function boot(): Promise<void> {
     delete process.env.DSH_PET_APP_TOKEN;
   }
 
-  let pomodoroClock: ReturnType<typeof setInterval> | undefined;
+  let desktopTimerClock: ReturnType<typeof setInterval> | undefined;
   void app.whenReady().then(() => {
     const tick = (): void => {
       try {
@@ -197,14 +222,22 @@ async function boot(): Promise<void> {
       } catch {
         log('无法保存番茄钟进度，将重试');
       }
+      try {
+        // Keep the existing phase alert on schedule. A coincident sitting reminder waits for its own slot.
+        const phase = pomodoro.snapshot();
+        const pomodoroSoon = phase.endsAt !== null && phase.endsAt - Date.now() < SITTING_NOTICE_MS;
+        sittingReminder.tick(!phase.notice && !pomodoroSoon);
+      } catch {
+        log('无法保存久坐提醒进度，将重试');
+      }
     };
     tick();
-    pomodoroClock = setInterval(tick, 1000).unref();
+    desktopTimerClock = setInterval(tick, 1000).unref();
   });
 
   app.on('second-instance', () => log('已有一个实例在运行，忽略本次启动'));
   app.on('will-quit', () => {
-    clearInterval(pomodoroClock);
+    clearInterval(desktopTimerClock);
     // 退出前把最后一批日志刷出去（定时器最多 1s，这里显式补一次）
     void logger.flush();
     logger.dispose();

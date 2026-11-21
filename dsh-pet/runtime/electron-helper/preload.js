@@ -81,4 +81,7 @@ contextBridge.exposeInMainWorld('petBridge', {
   onPomodoro(cb) {
     ipcRenderer.on('pet:pomodoro', (_event, view) => cb(view));
   },
+  onSittingReminder(cb) {
+    ipcRenderer.on('pet:sitting-reminder', (_event, notice) => cb(notice));
+  },
 });

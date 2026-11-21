@@ -51,6 +51,7 @@ function selectTab(name) {
     }
   }
   if (DESKTOP_ONLY && name === 'pomodoro') activatePomodoro();
+  if (DESKTOP_ONLY && name === 'sitting-reminder') activateSittingReminder();
 }
 
 function wireTabs() {

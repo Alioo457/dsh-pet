@@ -85,6 +85,7 @@ async function boot() {
     for (const s of sprites) s.dispose();
     sprites = [new PetSprite(pet)];
     refreshPomodoroBubble();
+    refreshSittingReminderBubble();
     window.__dshPetDebug.configOk = true;
     window.__dshPetDebug.spriteCount = sprites.length;
     for (const s of sprites) s.playIdle();
@@ -127,6 +128,35 @@ window.petBridge?.onPomodoro?.((view) => {
   refreshPomodoroBubble();
   if (pomodoroTicker !== null) window.clearInterval(pomodoroTicker);
   pomodoroTicker = view.phase ? window.setInterval(refreshPomodoroBubble, 1000) : null;
+});
+
+let sittingReminderNotice = null;
+let sittingReminderTimeout = null;
+
+function refreshSittingReminderBubble() {
+  const pet = sprites[0];
+  if (!pet || CONFIG.petIndex !== 0) return;
+  const text = sittingReminderNotice?.until > Date.now() ? sittingReminderNotice.text : '';
+  if (pet.sittingReminderText === text) return;
+  pet.sittingReminderText = text;
+  if (!pet.todoOpen && ['none', 'pomodoro', 'sitting-reminder'].includes(pet.bubbleSlot)) pet.renderBubble();
+}
+
+window.petBridge?.onSittingReminder?.((notice) => {
+  if (CONFIG.petIndex !== 0) return;
+  if (sittingReminderTimeout !== null) window.clearTimeout(sittingReminderTimeout);
+  sittingReminderNotice = notice;
+  refreshSittingReminderBubble();
+  sittingReminderTimeout = notice
+    ? window.setTimeout(
+        () => {
+          sittingReminderNotice = null;
+          sittingReminderTimeout = null;
+          refreshSittingReminderBubble();
+        },
+        Math.max(0, notice.until - Date.now()),
+      )
+    : null;
 });
 
 // 注入打字资源：气泡字体 + 点击/拖拽光标图标（与浏览器同一套素材，host 经 /dsh-pet-7340/ 提供）

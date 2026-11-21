@@ -22,6 +22,7 @@ export function renderSettingsPage(desktopOnly = false): string {
 ${desktopOnly ? '' : `<button type="button" class="navCell" role="tab" id="tab-chat" data-tab="chat" data-title="对话" aria-controls="panel-chat" aria-selected="true"><svg class="navGlyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.4h10a1.1 1.1 0 0 1 1.1 1.1v5.6A1.1 1.1 0 0 1 13 11.2H8.2L5 13.6v-2.4H3a1.1 1.1 0 0 1-1.1-1.1V4.5A1.1 1.1 0 0 1 3 3.4Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg><span class="navLabel">对话</span></button>`}
 <button type="button" class="navCell" role="tab" id="tab-config" data-tab="config" data-title="配置" aria-controls="panel-config" aria-selected="${desktopOnly}"><svg class="navGlyph" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M2.6 4.6h10.8M2.6 11.4h10.8"/><circle cx="6.2" cy="4.6" r="1.6" fill="currentColor" stroke="none"/><circle cx="9.8" cy="11.4" r="1.6" fill="currentColor" stroke="none"/></g></svg><span class="navLabel">配置</span></button>
 ${desktopOnly ? '<button type="button" class="navCell" role="tab" id="tab-pomodoro" data-tab="pomodoro" data-title="番茄钟" aria-controls="panel-pomodoro" aria-selected="false"><span class="navLabel">番茄钟</span></button>' : ''}
+${desktopOnly ? '<button type="button" class="navCell" role="tab" id="tab-sitting-reminder" data-tab="sitting-reminder" data-title="久坐提醒" aria-controls="panel-sitting-reminder" aria-selected="false"><span class="navLabel">久坐提醒</span></button>' : ''}
 </div></nav>
 <div class="sideFoot">独立模式</div>
 </aside>
@@ -63,6 +64,20 @@ ${
 <div class="testRow"><button class="btn primary" id="pomodoro-start" type="button" disabled>开始专注</button><button class="btn" id="pomodoro-stop" type="button" hidden>停止</button><button class="btn" id="pomodoro-save" type="button" disabled>保存时长</button></div>
 <p class="status" id="pomodoro-status" role="status" aria-live="polite"></p>
 </div>
+</div>
+</section>`
+    : ''
+}
+${
+  desktopOnly
+    ? `<section class="panel" id="panel-sitting-reminder" role="tabpanel" aria-labelledby="tab-sitting-reminder" hidden>
+<div class="scroll">
+<form class="card" id="sitting-reminder-form">
+<label class="rowCheck"><input id="sitting-reminder-enabled" type="checkbox" disabled><span class="rowCheckText"><span class="rowCheckTitle">启用久坐提醒</span><span class="rowCheckHint">桌宠按设定间隔提醒，重新打开桌宠后续算。</span></span></label>
+<div class="field"><label for="sitting-reminder-interval">提醒间隔（分钟）</label><input id="sitting-reminder-interval" type="number" min="5" max="300" step="1" value="60" required disabled></div>
+<div class="field"><label for="sitting-reminder-message">提示语</label><input id="sitting-reminder-message" type="text" maxlength="80" placeholder="该起来活动一下啦！" disabled></div>
+<div class="testRow"><button class="btn primary" id="sitting-reminder-save" type="submit" disabled>保存提醒</button><p class="status" id="sitting-reminder-status" role="status" aria-live="polite"></p></div>
+</form>
 </div>
 </section>`
     : ''
