@@ -6,7 +6,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { type PanelBox, pickPanelPosition } from './position.ts';
+import { fitDesktopCascade, type PanelBox, pickPanelPosition } from './position.ts';
 
 /** 视口坐标里的夹取范围（窗口 ∩ 工作区）。 */
 const CLAMP = { x: 0, y: 0, w: 900, h: 520 };
@@ -17,6 +17,32 @@ const box = (left: number, top: number, w: number, h: number): PanelBox => ({
   top,
   right: left + w,
   bottom: top + h,
+});
+
+describe('fitDesktopCascade —— 桌面菜单空间不足时并排展开', () => {
+  test('整组平移可以放下时保留原列宽', () => {
+    const columns = [
+      { left: 150, width: 150 },
+      { left: 304, width: 150 },
+    ];
+    assert.deepEqual(fitDesktopCascade(columns, 1, 150, 389, { x: 0, w: 500 }), [
+      { left: 4, width: 150 },
+      { left: 312, width: 150 },
+      { left: 158, width: 150 },
+    ]);
+  });
+
+  test('屏幕右下角空间不足时收窄三列，分类仍在鼠标下', () => {
+    const columns = [
+      { left: 207, width: 179 },
+      { left: 53, width: 150 },
+    ];
+    assert.deepEqual(fitDesktopCascade(columns, 1, 169, 149, { x: 0, w: 390 }), [
+      { left: 260, width: 124 },
+      { left: 132, width: 124 },
+      { left: 4, width: 124 },
+    ]);
+  });
 });
 
 /** 两个矩形是否严格相交（边贴边不算）。 */

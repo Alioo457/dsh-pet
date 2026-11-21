@@ -291,6 +291,7 @@ function createWindows({
       configUrl: process.env.DSH_PET_CONFIG_URL || 'http://127.0.0.1:3080/dsh-pet-7340/config',
       bridge: isBridge ? '1' : '0',
       appMode: appMode ? '1' : '0',
+      fitMenuColumns: appMode && process.platform === 'win32' ? '1' : '0',
       openTarget,
       scale: String(scale),
       petIndex: String(pet.index),

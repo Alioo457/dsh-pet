@@ -6,7 +6,7 @@
  * @module dsh-pet/src/shared/menu/mount
  */
 import type { ContextMenuMount, MenuBranch, MenuLeaf, MenuNode } from './types.ts';
-import { pickPanelPosition } from './position.ts';
+import { fitDesktopCascade, pickPanelPosition } from './position.ts';
 
 function isBranchNode(n: MenuNode): n is MenuBranch {
   return 'children' in n && Array.isArray((n as MenuBranch).children);
@@ -28,8 +28,8 @@ export function mountContextMenu(opts: {
   onClose?: () => void;
   /** 菜单允许占用的矩形（视口局部坐标）；缺省 = 整个视口 */
   clamp?: { x: number; y: number; w: number; h: number };
-  /** 桌面窗口空间不足时原栏展开，并重新登记鼠标命中区域。 */
-  desktopLayout?: { onChange: () => void };
+  /** 桌面子菜单的布局策略和鼠标命中区刷新。 */
+  desktopLayout?: { fitColumns?: boolean; onChange: () => void };
 }): ContextMenuMount {
   const { tree, x, y, onAction, onClose, clamp, desktopLayout } = opts;
   // 防御：clamp 含非有限值（如坐标来源缺失变成 NaN）时回落整个视口，否则面板会落到 (0,0)
@@ -52,6 +52,9 @@ export function mountContextMenu(opts: {
   let expandTimer: number | null = null;
   // 替换整列可能把别的分类放到静止光标下面。下一次移动或点击才允许继续展开。
   let waitForPointerMove = false;
+  let reflowPointer: { x: number; y: number } | undefined;
+  const pointerStayed = (event: MouseEvent): boolean =>
+    reflowPointer?.x === event.clientX && reflowPointer?.y === event.clientY;
   const cancelExpand = (): void => {
     if (expandTimer !== null) window.clearTimeout(expandTimer);
     expandTimer = null;
@@ -75,35 +78,52 @@ export function mountContextMenu(opts: {
 
   /** 把子面板摆到触发项旁边：优先父面板右侧，放不下翻到父面板左侧，
    *  且不与任何已展开面板重叠；贴边时夹进 clamp。 */
-  const showPanel = (panel: HTMLElement, item: HTMLElement): boolean => {
+  const showPanel = (panel: HTMLElement, item: HTMLElement, event: MouseEvent): boolean => {
     const rect = item.getBoundingClientRect();
     panel.style.left = '';
     panel.style.top = '';
     panel.style.display = 'block';
-    const parentEl = item.parentElement;
-    const pr = parentEl ? parentEl.getBoundingClientRect() : rect;
+    const parentEl = item.parentElement!;
+    const pr = parentEl.getBoundingClientRect();
+    const ancestors = visiblePanels().filter((p) => p !== panel);
     const position = {
       panel: { w: panel.offsetWidth, h: panel.offsetHeight },
       item: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
       parent: { left: pr.left, right: pr.right, top: pr.top },
-      others: visiblePanels()
-        .filter((p) => p !== panel)
-        .map((p) => {
-          const b = p.getBoundingClientRect();
-          return { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
-        }),
+      others: ancestors.map((p) => p.getBoundingClientRect()),
       clamp: { x: c.x, y: c.y, w: c.w, h: c.h },
     };
     const pick = desktopLayout ? pickPanelPosition(position, false) : pickPanelPosition(position);
-    if (!pick) {
+    if (pick) {
+      panel.style.left = pick.left + 'px';
+      panel.style.top = pick.top + 'px';
+    } else if (desktopLayout?.fitColumns) {
+      const parentIndex = ancestors.indexOf(parentEl);
+      const columns = fitDesktopCascade(
+        position.others,
+        parentIndex,
+        panel.getBoundingClientRect().width,
+        event.clientX,
+        c,
+      );
+      reflowPointer = { x: event.clientX, y: event.clientY };
+      [...ancestors, panel].forEach((column, i) => {
+        const { left, width } = columns[i];
+        if (width < column.getBoundingClientRect().width) {
+          column.style.minWidth = '0';
+          column.style.width = width + 'px';
+          column.style.overflowX = 'hidden';
+        }
+        column.style.left = left + 'px';
+      });
+      panel.style.top = Math.max(c.y + 4, Math.min(rect.top, c.y + c.h - panel.offsetHeight - 4)) + 'px';
+    } else {
       panel.style.display = 'none';
       return false;
     }
-    panel.style.left = pick.left + 'px';
-    panel.style.top = pick.top + 'px';
     if (desktopLayout) {
       const arrow = item.querySelector('.dsh-pet-menu-arrow');
-      if (arrow) arrow.textContent = pick.left < pr.left ? '◂' : '▸';
+      if (arrow) arrow.textContent = panel.offsetLeft < parentEl.offsetLeft ? '◂' : '▸';
     }
     return true;
   };
@@ -174,12 +194,12 @@ export function mountContextMenu(opts: {
         const childPanel = buildPanel(node.children); // 递归：子面板已入树（晚于本面板）
         // 悬停分支：先收掉本面板其它分支已展开的子面板链，再展开当前的。
         // 指针在本菜单树内移动绝不自动收起——跨 4px 缝隙或面板间隙都不会触发关闭。
-        const expand = (clicked: boolean): void => {
+        const expand = (event: MouseEvent, clicked: boolean): void => {
           cancelExpand();
           const prev = openChild.get(panel);
           if (desktopLayout && prev === childPanel && childPanel.style.display !== 'none') return;
           if (prev && prev !== childPanel) hideChain(prev);
-          if (showPanel(childPanel, item)) {
+          if (showPanel(childPanel, item, event)) {
             openChild.set(panel, childPanel);
           } else {
             openChild.delete(panel);
@@ -195,21 +215,22 @@ export function mountContextMenu(opts: {
           }
           desktopLayout?.onChange();
         };
-        item.addEventListener('mouseenter', () => {
-          if (!waitForPointerMove) expand(false);
+        item.addEventListener('mouseenter', (event) => {
+          if (!waitForPointerMove && !pointerStayed(event)) expand(event, false);
         });
         if (desktopLayout) {
-          item.addEventListener('mousemove', () => {
+          item.addEventListener('mousemove', (event) => {
             if (!waitForPointerMove) return;
             waitForPointerMove = false;
-            expand(false);
+            expand(event, false);
           });
           item.addEventListener('mouseleave', cancelExpand);
-          item.addEventListener('click', () => expand(true));
+          item.addEventListener('click', (event) => expand(event, true));
         }
       } else {
         // 叶子项不展开子菜单；进入时收起同面板已展开的子面板链，否则它会一直挂着
-        item.addEventListener('mouseenter', () => {
+        item.addEventListener('mouseenter', (event) => {
+          if (pointerStayed(event)) return;
           const prev = openChild.get(panel);
           if (prev) hideChain(prev);
           desktopLayout?.onChange();
@@ -279,8 +300,9 @@ export function mountContextMenu(opts: {
     }
   });
   if (desktopLayout)
-    root.addEventListener('mousemove', () => {
+    root.addEventListener('mousemove', (event) => {
       waitForPointerMove = false;
+      if (!pointerStayed(event)) reflowPointer = undefined;
     });
 
   const onDocPointerDown = (e: MouseEvent): void => {

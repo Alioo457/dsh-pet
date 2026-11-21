@@ -73,3 +73,59 @@ export function pickPanelPosition(input: PanelPositionInput, allowOverlap = true
   // 兜底：窗口太窄，任何落点都会压到——贴父面板右侧夹取，宁可贴边也不叠在一起。
   return { left: clampX(parent.right + PANEL_GAP), top: clampY(topAtItem) };
 }
+
+/** 常规侧向落点放不下时，把桌面菜单整组并排放入可视区，优先让触发行留在鼠标下。 */
+export function fitDesktopCascade(
+  columns: { left: number; width: number }[],
+  parentIndex: number,
+  childWidth: number,
+  pointerX: number,
+  clamp: { x: number; w: number },
+): { left: number; width: number }[] {
+  const widths = [...columns.map((column) => column.width), childWidth];
+  const gap = PANEL_GAP;
+  const minLeft = clamp.x + PANEL_GAP;
+  const available = clamp.w - PANEL_GAP * 2 - gap * (widths.length - 1);
+  if (widths.reduce((total, width) => total + width, 0) > available) {
+    const cap = Math.floor(available / widths.length);
+    for (let i = 0; i < widths.length; i++) widths[i] = Math.min(widths[i], cap);
+  }
+  const parent = columns[parentIndex];
+  const parentWidth = widths[parentIndex];
+  const childIndex = columns.length;
+  const order = columns.map((_, index) => index).sort((a, b) => columns[a].left - columns[b].left);
+  const parentSlot = order.indexOf(parentIndex);
+  const maxLeft = minLeft + available - widths.reduce((total, width) => total + width, 0);
+
+  const candidate = (slot: number) => {
+    const slots = order.slice();
+    slots.splice(slot, 0, childIndex);
+    const parentOffset = slots.slice(0, slots.indexOf(parentIndex)).reduce((sum, i) => sum + widths[i] + gap, 0);
+    // Leave enough room for the item inset so a stationary pointer still hits the triggering row.
+    const inset = Math.min(6, parentWidth / 2);
+    const minAnchor = Math.max(minLeft, pointerX - parentOffset - parentWidth + inset);
+    const maxAnchor = Math.min(maxLeft, pointerX - parentOffset - inset);
+    const preferred = parent.left - parentOffset;
+    const left =
+      minAnchor <= maxAnchor
+        ? Math.max(minAnchor, Math.min(preferred, maxAnchor))
+        : Math.max(minLeft, Math.min(maxLeft, minAnchor));
+    const parentLeft = left + parentOffset;
+    return {
+      left,
+      slots,
+      miss: Math.max(0, parentLeft + inset - pointerX, pointerX - (parentLeft + parentWidth - inset)),
+      shift: Math.abs(parentLeft - parent.left),
+    };
+  };
+  const right = candidate(parentSlot + 1);
+  const left = candidate(parentSlot);
+  const best = left.miss < right.miss || (left.miss === right.miss && left.shift < right.shift) ? left : right;
+  const result = widths.map((width) => ({ left: 0, width }));
+  let nextLeft = best.left;
+  for (const index of best.slots) {
+    result[index].left = nextLeft;
+    nextLeft += widths[index] + gap;
+  }
+  return result;
+}
