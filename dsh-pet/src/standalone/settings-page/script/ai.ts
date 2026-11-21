@@ -112,10 +112,12 @@ function populateAi(data) {
   if (serviceSelect) serviceSelect.setValue(currentService);
   applyProfile(currentService);
   paintServiceState();
-  byId('deepseek-key-state').textContent = data.hasDeepseekKey ? '已保存 · 不回显' : '尚未设置';
-  byId('deepseek-key-actions').hidden = data.hasDeepseekKey !== true;
-  byId('deepseekApiKey').value = '';
-  byId('deepseekApiKey').disabled = false;
+  if (!DESKTOP_ONLY) {
+    byId('deepseek-key-state').textContent = data.hasDeepseekKey ? '已保存 · 不回显' : '尚未设置';
+    byId('deepseek-key-actions').hidden = data.hasDeepseekKey !== true;
+    byId('deepseekApiKey').value = '';
+    byId('deepseekApiKey').disabled = false;
+  }
 }
 
 /** 用户换了服务商：回填该家自己的协议/地址/模型，其余状态跟着走。 */
@@ -284,11 +286,10 @@ function wireSave(form, save, status) {
     const input = {
       service: currentService,
       keys: keys,
-      profiles: profiles,
-      deepseekApiKey: byId('deepseekApiKey').value,
+      ...(DESKTOP_ONLY ? {} : { profiles: profiles, deepseekApiKey: byId('deepseekApiKey').value }),
     };
     byId('apiKey').value = '';
-    byId('deepseekApiKey').value = '';
+    if (!DESKTOP_ONLY) byId('deepseekApiKey').value = '';
     try {
       populateAi(await aiRequest('POST', input));
       setStatus(status, '已保存到本机。', 'ok');
@@ -301,11 +302,13 @@ function wireSave(form, save, status) {
 }
 
 function wireAiPanel() {
-  wireModelPicker();
+  if (!DESKTOP_ONLY) wireModelPicker();
   const status = byId('status');
   wireKeyDelete(status);
-  wireDeepseekKeyDelete(status);
-  wireTest(byId('test-btn'), byId('test-result'));
+  if (!DESKTOP_ONLY) {
+    wireDeepseekKeyDelete(status);
+    wireTest(byId('test-btn'), byId('test-result'));
+  }
   wireBalanceQuery();
   wireSave(byId('settings'), byId('save'), status);
 }

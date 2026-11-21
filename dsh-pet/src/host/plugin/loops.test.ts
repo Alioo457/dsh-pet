@@ -12,9 +12,9 @@ import assert from 'node:assert/strict';
 import { shouldSleepTalk } from './loops.ts';
 
 describe('shouldSleepTalk —— 梦话闸门', () => {
-  test('开着碎碎念且可见：说梦话', () => {
+  test('开着碎碎念且网页可见：说梦话', () => {
     assert.equal(shouldSleepTalk({ whisperEnabled: true, display: 'web' }), true);
-    assert.equal(shouldSleepTalk({ whisperEnabled: true, display: 'desktop' }), true);
+    assert.equal(shouldSleepTalk({ whisperEnabled: true, display: 'desktop' }), false);
     assert.equal(shouldSleepTalk({ whisperEnabled: true, display: 'both' }), true);
   });
 

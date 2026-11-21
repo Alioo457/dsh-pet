@@ -6,18 +6,13 @@ import { createRequestSecurity } from '../standalone/request-security.ts';
 import { MAX_REQUEST_BYTES, MAX_SETTINGS_BYTES } from '../standalone/request-body.ts';
 import { startRouter } from './router.ts';
 
-async function start(
-  routes: RegisteredRoute[] = [],
-  log: (message: string) => void = () => {},
-  chatPanelScript?: () => string | undefined,
-) {
+async function start(routes: RegisteredRoute[] = [], log: (message: string) => void = () => {}) {
   const security = createRequestSecurity();
   const server = await startRouter(routes, {
     security,
     log,
     status: (port) => ({ audit: true, port }),
     landingPage: () => '<html>local app</html>',
-    ...(chatPanelScript ? { chatPanelScript } : {}),
   });
   return { ...server, security, base: `http://127.0.0.1:${server.port}` };
 }
@@ -44,7 +39,7 @@ test('app rejects untrusted file origins and hosts while authenticated desktop c
     },
   ]);
   try {
-    const path = server.base + '/dsh-pet-7340/chat';
+    const path = server.base + '/dsh-pet-7340/todos';
     const token = { 'X-DSH-Pet-Token': server.security.token };
     const blockedHeaders: Array<Record<string, string>> = [
       { Origin: 'null', 'Sec-Fetch-Site': 'cross-site' },
@@ -168,33 +163,41 @@ test('app caps request bodies before plugins/settings and catches synchronous an
   }
 });
 
-test('设置页对话面板脚本：有产物时由 app 路由提供 → 200 且类型与内容正确', async () => {
-  const script = 'window.__CHAT_PANEL__ = 1;';
-  const server = await start(
-    [],
-    () => {},
-    () => script,
-  );
+test('独立桌面版设置保留余额入口，移除音色服务和对话面板', async () => {
+  const server = await start();
   try {
-    const response = await fetch(server.base + '/standalone-ai/chat-panel.js');
+    const response = await fetch(server.base + '/standalone-ai/');
     assert.equal(response.status, 200);
-    assert.match(response.headers.get('content-type') ?? '', /^text\/javascript/);
-    assert.equal(await response.text(), script);
+    const html = await response.text();
+    assert.match(html, /id="balance-btn"/);
+    assert.doesNotMatch(html, /id="deepseekApiKey"/);
+    assert.doesNotMatch(html, /data-tab="chat"|chat-panel\.js/);
+    const chatPanel = await fetch(server.base + '/standalone-ai/chat-panel.js');
+    assert.equal(chatPanel.status, 404);
   } finally {
     await server.close();
   }
 });
 
-test('设置页对话面板脚本：产物缺失时 → 404 并提示重新构建，而不是静默回空脚本', async () => {
-  const server = await start(
-    [],
-    () => {},
-    () => undefined,
-  );
+test('独立桌面版拦截旧对话和语音输入入口，播报接口正常分发', async () => {
+  const server = await start([
+    {
+      kind: 'prefix',
+      path: '/dsh-pet-7340',
+      handler: (_req, res) => {
+        res.writeHead(204);
+        res.end();
+      },
+    },
+  ]);
   try {
-    const response = await fetch(server.base + '/standalone-ai/chat-panel.js');
-    assert.equal(response.status, 404);
-    assert.match(await response.text(), /重新构建/);
+    const headers = { 'X-DSH-Pet-Token': server.security.token };
+    for (const path of ['chat', '%63hat', 'whisper', 'voice/hear']) {
+      const result = await fetch(server.base + '/dsh-pet-7340/' + path, { method: 'POST', headers });
+      assert.equal(result.status, 410, path);
+      await result.text();
+    }
+    assert.equal((await fetch(server.base + '/dsh-pet-7340/voice/speak', { method: 'POST', headers })).status, 204);
   } finally {
     await server.close();
   }

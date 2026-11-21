@@ -83,7 +83,7 @@ interface Page {
  *
  * 每个 test 都新建，避免用例之间互相污染——脚本在启动时会发请求、改元素状态。
  */
-async function setupPage(): Promise<Page> {
+async function setupPage(desktopOnly = false): Promise<Page> {
   const elements = new Map<string, FakeElement>();
   const element = (id: string): FakeElement => {
     if (!elements.has(id))
@@ -146,6 +146,7 @@ async function setupPage(): Promise<Page> {
   };
 
   const body = node();
+  if (desktopOnly) body.dataset.desktopOnly = 'true';
   const requests: RecordedRequest[] = [];
   let stripped = '';
   runInNewContext(settingsScript, {
@@ -342,6 +343,17 @@ test('启动：地址片段被清掉，密钥框清空并显示已保存', async
     page.aiRequests().every(({ options }) => options.headers['X-DSH-Pet-Token'] === 'process-capability'),
     'AI 请求必须带本次运行的访问令牌',
   );
+});
+
+test('独立桌面版仅提交余额密钥相关字段，保留旧模型和语音服务设置原值', async () => {
+  const page = await setupPage(true);
+  assert.equal(page.element('model-toggle').listeners.click, undefined);
+  page.element('apiKey').value = 'fake-balance-key';
+  await page.element('settings').listeners.submit({ preventDefault() {} });
+  const saved = page.lastAiBody();
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.keys)), { DEEPSEEK_API_KEY: 'fake-balance-key' });
+  assert.equal('deepseekApiKey' in saved, false);
+  assert.equal('profiles' in saved, false);
 });
 
 test('保存：密钥只写不回显，按当前服务商提交 keys 与 profile', async () => {

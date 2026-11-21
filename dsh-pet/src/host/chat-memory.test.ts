@@ -198,9 +198,10 @@ describe('createChatMemory —— 指定配图的碎碎念', () => {
   });
 
   test('配置写了但图片文件已删：同样 unknown-image（池判定含文件存在性）', async () => {
-    const ws = poolWorkspace();
-    rmSync(join(ws.memeDir, '生气.png'));
+    const ws = tempWorkspace({ memes: { 可爱: '卖萌立绘', 生气: '鼓腮帮子' } });
     try {
+      mkdirSync(ws.memeDir, { recursive: true });
+      writeFileSync(join(ws.memeDir, '可爱.png'), '');
       const r = await createMemory('不该生成', ws, ws.memeDir).publishWhisper('main', '生气');
       assert.equal(r.ok === false ? r.reason : '', 'unknown-image');
     } finally {
@@ -219,7 +220,7 @@ describe('createChatMemory —— 指定配图的碎碎念', () => {
     }
   });
 
-  test('voiceTo：传了就用传的，没传按 display 推导（默认宠物 display=both → desktop）', async () => {
+  test('voiceTo：传了就用传的，没传按 display 推导（默认宠物 display=both → web）', async () => {
     const ws = poolWorkspace({ voiceEnabled: true });
     const records: Array<{ petId: string; leaf: string; data: Record<string, unknown> }> = [];
     try {
@@ -227,7 +228,10 @@ describe('createChatMemory —— 指定配图的碎碎念', () => {
       assert.equal(records[0]?.data.voiceTo, 'web', '显式传入优先于 display');
 
       await createMemory('纯文本一句', ws, ws.memeDir, { records }).publishWhisper('main');
-      assert.equal(records[1]?.data.voiceTo, 'desktop', '没传时按 display 推导：桌面优先');
+      assert.equal(records[1]?.data.voiceTo, 'web', '没传时按 display 推导：网页端播报');
+      assert.equal(records[1]?.data.webOnly, true, '桌面跳过生成气泡');
+      await createMemory('旧桌面请求', ws, ws.memeDir, { records }).publishWhisper('main', undefined, 'desktop');
+      assert.equal(records[2]?.data.voiceTo, undefined, '旧桌面请求不再触发播报');
     } finally {
       rmSync(ws.dir, { recursive: true, force: true });
     }
@@ -259,10 +263,10 @@ describe('createChatMemory —— 指定配图的碎碎念', () => {
         undefined,
         'whisper',
       );
-      assert.equal(onRecords[0]?.data.voiceTo, 'desktop', '开关打开后周期碎碎念照常带 voiceTo');
+      assert.equal(onRecords[0]?.data.voiceTo, 'web', '开关打开后周期碎碎念照常带 voiceTo');
 
       await createMemory('一句', on, undefined, { records: onRecords }).publishWhisper('main');
-      assert.equal(onRecords[1]?.data.voiceTo, 'desktop', '开关打开后手动触发照常带 voiceTo');
+      assert.equal(onRecords[1]?.data.voiceTo, 'web', '开关打开后手动触发照常带 voiceTo');
     } finally {
       rmSync(on.dir, { recursive: true, force: true });
     }
@@ -276,7 +280,8 @@ describe('createChatMemory —— 对话回复的 voiceTo', () => {
     try {
       const r = await createMemory('在的', ws, undefined, { records }).chatWithPet('main', '在吗');
       assert.equal(r.ok, true);
-      assert.equal(records[0]?.data.voiceTo, 'desktop', '默认宠物 display=both，桌面优先');
+      assert.equal(records[0]?.data.voiceTo, 'web', '默认宠物 display=both，网页端播报');
+      assert.equal(records[0]?.data.webOnly, true);
     } finally {
       rmSync(ws.dir, { recursive: true, force: true });
     }

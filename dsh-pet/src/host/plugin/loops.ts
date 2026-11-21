@@ -5,7 +5,7 @@
  * @module dsh-pet/src/host/plugin/loops
  */
 import { findPetInstance, flattenPetList, readAllConfig } from '../config.ts';
-import { isDisplayed } from '../surface.ts';
+import { displayCovers } from '../surface.ts';
 import { automaticWhisperSchedule } from '../whisper-policy.ts';
 import { clampPeriodSec } from './period.ts';
 import type { BalancePoll } from './balance-poll.ts';
@@ -27,6 +27,8 @@ const WHISPER_QUEUE_MAX = 6;
 export type LoopsInput = {
   /** 宿主上下文（apply 收到的那一个）。 */
   ctx: HostContext;
+  /** 独立 Electron 应用没有网页桌宠。 */
+  desktopOnly?: boolean;
 } & Pick<BalancePoll, 'balancePeriodSec'> &
   Pick<HostSetup, 'configPaths'> &
   Pick<ChatMemory, 'lastWhisperAt'> &
@@ -95,6 +97,8 @@ export function registerLoops(deps: LoopsInput): void {
       if (timer !== null) clearTimeout(timer);
     };
   }, 'dsh-pet: balance poll');
+
+  if (deps.desktopOnly === true) return;
 
   // 碎碎念周期：host 侧调度。一拍 = 读一次配置 + 把「到点」的宠物排进错峰队列；下一拍按最短周期排。
   // 用固定拍 + 逐宠物比对 lastWhisperAt，而不是每宠一个定时器：宠物随配置增删、周期随条目改，
@@ -173,8 +177,8 @@ export function registerLoops(deps: LoopsInput): void {
           // 放在 min 之前：不可见的宠物也不该把整拍的周期拖住。不推进 lastWhisperAt——
           // 与占用锁同一口径，重新可见后下一拍立刻补一句。
           const display = String(pet.display ?? '');
-          if (!isDisplayed(display)) {
-            skipped.push(petId + ': display=none');
+          if (!displayCovers('web', display)) {
+            skipped.push(petId + ': 网页未显示');
             continue;
           }
           const sec = schedule.periodSec;
@@ -287,7 +291,7 @@ export function registerLoops(deps: LoopsInput): void {
 /**
  * 这只宠物这一刻该不该说梦话。
  *
- * 两道判定与碎碎念同口径：宠物自己关掉碎碎念就不再有任何后台生成；配置上不显示的
+ * 两道判定与碎碎念同口径：宠物自己关掉碎碎念就不再有任何后台生成；未显示在网页端的
  * 宠物也不生成——用户选「都不显示」就是不用了，后台继续调模型纯属白烧额度（#237）。
  *
  * @param pet - 成品配置拍平后的宠物条目。
@@ -296,7 +300,7 @@ export function registerLoops(deps: LoopsInput): void {
  */
 export function shouldSleepTalk(pet: Record<string, unknown>): boolean {
   if (pet.whisperEnabled !== true) return false;
-  return isDisplayed(String(pet.display ?? ''));
+  return displayCovers('web', String(pet.display ?? ''));
 }
 
 /** 梦话周期（秒）：条目级 eventsRefreshSec.sleepTalk，读不到按 60 兜底（与配置注释同一口径）。 */

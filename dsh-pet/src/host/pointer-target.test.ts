@@ -18,6 +18,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { runInNewContext } from 'node:vm';
 
 const require = createRequire(import.meta.url);
 const helper = '../../runtime/electron-helper/';
@@ -45,6 +46,28 @@ const spriteSource = (): string =>
       readSource(helper + 'sprite/' + name),
     ),
   ].join('\n');
+
+test('桌面窗口跳过网页 AI 事件，仍显示并播报待办提醒', () => {
+  const events: Array<string | undefined> = [];
+  const renderer = {
+    PetSprite: function PetSprite() {},
+    sprites: [{ pet: { id: 'main' }, showWhisper: (text: string) => events.push(text) }],
+    S: {
+      readSay: (leaf: { data: object }) => ({ kind: 'say', ...leaf.data }),
+      playSayVoice: (said: { voiceTo?: string }) => events.push(said.voiceTo),
+    },
+  };
+  runInNewContext(
+    readSource(helper + 'events.js') +
+      `
+applySayLeaf('main', { data: { text: 'AI', webOnly: true } });
+applyAnimLeaf('main', { data: { name: 'AI 动作', webOnly: true } });
+applySayLeaf('main', { data: { text: '待办提醒', voiceTo: 'desktop' } });
+`,
+    renderer,
+  );
+  assert.deepEqual(events, ['待办提醒', 'desktop']);
+});
 
 /** 真实窗口矩形（DIP）：宠物 size 462 → 窗口 = 462 + 两侧各 231 = 924；高度 = 画布 + bottomPad + 两侧余量 */
 const bounds = { x: 1000, y: 500, width: 924, height: 743 };
@@ -340,7 +363,7 @@ describe('守卫：渲染端的输入租约必须在位（helper 随包发行，
     const m = /inputBusy\(\)\s*\{([\s\S]*?)\n {2}\}/.exec(sprite);
     assert.ok(m, 'sprite.js 里找不到 inputBusy()');
     const body = m[1];
-    for (const flag of ['dragState.active', 'menuOpen', 'chatOpen']) {
+    for (const flag of ['dragState.active', 'menuOpen', 'todoOpen']) {
       assert.ok(body.includes(flag), `租约必须包含 ${flag}`);
     }
   });
@@ -356,7 +379,7 @@ describe('守卫：渲染端的输入租约必须在位（helper 随包发行，
       '真正开始拖拽时也要上报（此时可能尚未上报过）',
     );
     assert.ok(/this\.menuOpen = true;[\s\S]{0,300}?this\.syncInputBusy\(\)/.test(sprite), '菜单打开必须上报');
-    assert.ok(/this\.chatOpen = true;[\s\S]{0,300}?this\.syncInputBusy\(\)/.test(sprite), '对话弹窗打开必须上报');
+    assert.ok(/this\.todoOpen = true;[\s\S]{0,300}?this\.syncInputBusy\(\)/.test(sprite), '待办面板打开必须上报');
   });
 
   test('解除点：松手 / closeMenu / 菜单 onClose / 弹窗 onClose 每一处都上报', () => {
@@ -376,8 +399,8 @@ describe('守卫：渲染端的输入租约必须在位（helper 随包发行，
       /onClose: \(\) => \{\s*this\.menuOpen = false;[\s\S]{0,200}?this\.syncInputBusy\(\)/.test(sprite),
       '菜单 onClose（点外/Esc）必须上报——这条路径不经 closeMenu',
     );
-    // 对话弹窗关闭
-    assert.ok(/this\.chatOpen = false;[\s\S]{0,300}?this\.syncInputBusy\(\)/.test(sprite), '对话弹窗关闭必须上报');
+    // 待办面板关闭
+    assert.ok(/this\.todoOpen = false;[\s\S]{0,300}?this\.syncInputBusy\(\)/.test(sprite), '待办面板关闭必须上报');
   });
 
   test('上报是幂等的、只走 petBridge.setInputBusy（不逐帧刷 IPC）', () => {

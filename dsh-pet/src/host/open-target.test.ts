@@ -2,7 +2,7 @@
  * 菜单首项按宿主形态自动分派的契约测试（宿主 = DSH 桌面应用 / dsh web / 独立模式）。
  *
  * 需求：三种形态下同一个工具项要有三种去向与文案——桌面应用「打开软件」（把主窗口叫回前台）、
- * 独立模式「打开 AI 设置」（本机设置页）、dsh web「打开网站」（DSH 站点）。
+ * 独立模式「打开桌宠设置」（本机设置页）、dsh web「打开网站」（DSH 站点）。
  * 判定逻辑已抽成纯函数 {@link resolveOpenTarget}，直接断言行为；两侧装配（宿主注入与 helper 解析）
  * 各自构建、无法互相 import，仍用源码断言守住接线。
  */
@@ -107,8 +107,8 @@ describe('装配接线：宿主注入 → helper 解析 → 渲染端文案', ()
       "constants.js 必须从 query 读三态且默认 'web'",
     );
     assert.ok(
-      /\{ desktop: '打开软件', standalone: '打开 AI 设置', web: '打开网站' \}/.test(sprite),
-      '三种形态必须有三种文案，web 不得再显示「打开 AI 设置」',
+      /\{ desktop: '打开软件', standalone: '打开桌宠设置', web: '打开网站' \}/.test(sprite),
+      '三种形态必须有三种文案，web 不得再显示「打开桌宠设置」',
     );
     assert.ok(
       /label: OPEN_LABEL\[OPEN_TARGET\],\s*action: 'open-site'/.test(sprite),

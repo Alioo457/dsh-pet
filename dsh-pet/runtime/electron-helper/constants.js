@@ -140,7 +140,6 @@ const STATE_URL = BASE + '/state'; // 轮询统一状态 S：前端 1s 轮询的
 const BALANCE_URL = BASE + '/balance'; // 余额刷新动作（POST，写 S；数据本身从 /state 读）
 const ENVIRONMENT_URL = BASE + '/environment'; // 环境查询动作（POST，强制刷新并写 sections.env）
 const FOCUS_SESSION_URL = BASE + '/focus-session'; // 跳会话动作（POST，写 sections.focusSession；页面据此切过去）
-const WHISPER_URL = BASE + '/whisper';
 // 实况上报（渲染端 → 宿主，内部通道）：第三方用 GET /pose 读宿主存下的这份快照
 const POSE_REPORT_URL = BASE + '/pose/report';
 // 实况上报的节流间隔（ms）。sendBounds 在走位/抛掷时逐帧调用，必须合并；且必须带 trailing edge
@@ -159,7 +158,7 @@ const WINDOW_MARGIN_RATIO = 0.5;
 
 const rootEl = document.getElementById('root');
 const errorEl = document.getElementById('pet-error');
-let config = null; // { pets: 拍平后的成品实例列表, physics, confineToScreen, clickSoundEnabled }（loadConfig 填充）
+let config = null; // { pets: 拍平后的成品实例列表, physics, confineToScreen }（loadConfig 填充）
 let sprites = []; // PetSprite[]（本窗口只装一只宠物）
 let balance = null; // BalanceState（本窗口单宠共用）
 let balanceTick = 0;
@@ -176,7 +175,6 @@ window.__dshPetDebug = {
   lastBubbleTitle: '',
   lastBalanceOk: null,
   menuOpen: false,
-  chatOpen: false,
   bootAt: Date.now(),
 };
 window.addEventListener('error', (event) => {

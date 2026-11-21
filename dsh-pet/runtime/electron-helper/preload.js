@@ -58,11 +58,6 @@ contextBridge.exposeInMainWorld('petBridge', {
   focusDshHost() {
     ipcRenderer.send('pet:focus-host');
   },
-  // 截一帧桌面（宠物所在那块屏）：一次性读取，不建流、不留存。
-  // 返回 { mediaType, data, width, height, bytes } 或 null（取不到画面）。
-  captureScreen() {
-    return ipcRenderer.invoke('pet:capture-screen');
-  },
   // 宠物间碰撞（跨窗 broker）：位置与速度随 setBounds 捎带，主进程汇聚后广播；被撞方收 pet:hit 后按新初速抛出。
   onFlightStates(cb) {
     ipcRenderer.on('pet:flight-states', (e, states) => cb(states));

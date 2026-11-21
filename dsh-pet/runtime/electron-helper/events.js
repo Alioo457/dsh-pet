@@ -371,6 +371,7 @@ function applyEnvLeaf(leaf) {
 
 /** 说话叶子 → 对应宠物播说话动画 + 气泡。`kind: 'clear'` = 收起气泡，其余 = 弹一个气泡。 */
 function applySayLeaf(petId, leaf) {
+  if (leaf.data?.webOnly === true) return;
   const said = S.readSay(leaf);
   if (!said) return;
   for (const s of sprites) {
@@ -401,6 +402,7 @@ function applyWorkStatusLeaf(leaf) {
  *  只换源播一次。facing 必须在换源之前赋给 sprite——switchTo 在 onReady 里按它贴 scaleX(-1)。
  *  没给 facing 就保持宠物当前朝向；给了则跳过「文字类动画点播前强制朝左」的修正。 */
 function applyAnimLeaf(petId, leaf) {
+  if (leaf.data?.webOnly === true) return;
   const hit = S.readAnim(leaf);
   if (!hit) return;
   for (const s of sprites) {

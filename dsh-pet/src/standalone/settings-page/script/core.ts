@@ -46,6 +46,7 @@ export function coreScript(routePath: string, consts: ScriptConsts): string {
   return `
 const TOKEN = new URLSearchParams(location.hash.slice(1)).get('token') || '';
 history.replaceState(null, '', location.pathname);
+const DESKTOP_ONLY = document.body?.dataset?.desktopOnly === 'true';
 const API = ${JSON.stringify(routePath)};
 const VOICES = ${JSON.stringify(consts.voices)};
 const DEFAULT_VOICE_ID = ${JSON.stringify(consts.defaultVoice)};

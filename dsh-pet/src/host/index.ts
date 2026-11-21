@@ -228,6 +228,7 @@ export function apply(ctx: any): void {
 
   registerLoops({
     ctx,
+    desktopOnly: setup.optionalService('petDesktopOnly') === true,
     balancePeriodSec,
     configPaths,
     lastWhisperAt,

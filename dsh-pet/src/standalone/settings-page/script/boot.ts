@@ -70,6 +70,7 @@ function wireTabs() {
 }
 
 async function loadVoiceCatalog() {
+  if (DESKTOP_ONLY) return;
   // 音色与识别实现都是宿主目录：注册了哪些实现，页面就列哪些。
   // 拉不到就回落构建期注入的内置清单，至少内置实现还能选。
   try {
@@ -131,7 +132,7 @@ async function loadAi() {
 
 function boot() {
   wireTabs();
-  selectTab('chat');
+  selectTab(DESKTOP_ONLY ? 'config' : 'chat');
   // 刷新后地址栏里的令牌已被清掉，此时靠首次访问换来的 HttpOnly cookie 继续；
   // cookie 也没了的时候，各面板自己的请求会失败并显示重新打开设置的提示。
   mountServiceSelect();

@@ -233,9 +233,9 @@ Object.assign(PetSprite.prototype, {
   /**
    * 本窗口是否必须保持可交互（= 我正在用这个窗口的鼠标输入）。
    *
-   * 来源是拖拽中 / 右键菜单开着 / 对话或待办弹窗开着（外加可点的余额、工作与说话气泡）：它们都靠窗口级鼠标事件驱动，
+   * 来源是拖拽中 / 右键菜单开着 / 待办面板开着（外加可点的余额、工作与说话气泡）：它们都靠窗口级鼠标事件驱动，
    * 窗口一变回穿透输入链就断（拖拽定格、松手也没人报 pointerup）。
-   * 这是渲染端专有的知识，主进程无从推断；同时上报控件矩形，菜单/聊天框外仍继续穿透。
+   * 这是渲染端专有的知识，主进程无从推断；同时上报控件矩形，菜单和待办面板之外仍继续穿透。
    */
   inputBusy() {
     // 可点的气泡（余额翻页、工作气泡跳会话、说话气泡戳破）同样是来源：它们长在窗口里、靠窗口级 click 触发，
@@ -243,7 +243,6 @@ Object.assign(PetSprite.prototype, {
     return (
       this.dragState.active ||
       this.menuOpen ||
-      this.chatOpen ||
       this.todoOpen ||
       this.balanceClickable() ||
       this.workClickable() ||
@@ -290,9 +289,7 @@ Object.assign(PetSprite.prototype, {
     if (!window.petBridge || !window.petBridge.setInputRegions) return;
     const rects = [];
     // 控件矩形 = 主进程允许接收点击的区域，矩形外继续穿透。可点的余额气泡悬在余量区，不登记就点不到。
-    const controls = [
-      ...document.querySelectorAll('.dsh-pet-menu-column, .dsh-pet-chat, .dsh-pet-todo, .pet-bubble.is-clickable'),
-    ];
+    const controls = [...document.querySelectorAll('.dsh-pet-menu-column, .dsh-pet-todo, .pet-bubble.is-clickable')];
     for (const el of this.inputRegionElements) {
       if (!controls.includes(el)) {
         this.inputRegionResize.unobserve(el);
@@ -343,7 +340,7 @@ Object.assign(PetSprite.prototype, {
       return;
     }
     // 右键菜单/对话弹窗/待办面板开启：整窗保持可交互，关闭后恢复命中区判定
-    if (this.menuOpen || this.chatOpen || this.todoOpen) {
+    if (this.menuOpen || this.todoOpen) {
       this.syncInputRegions(); // 级联菜单按悬停增减面板，及时更新占用区域
       this.setInteractive(true);
       this.setTip(false); // 菜单/弹窗期间提示让位，不跟浮层抢注意力
@@ -389,11 +386,10 @@ Object.assign(PetSprite.prototype, {
     }
     this.stopThrow(); // 点击飞行中的宠物 = 收手停住（再播点击回应）
     this.stopMove();
-    // 睡觉：点一下就是叫醒。挤压与音效照常（手感与平时一致），但不播点击回应动画——
+    // 睡觉：点一下就是叫醒。挤压照常（手感与平时一致），但不播点击回应动画——
     // 叫醒的表现由 /wake 写回的 sleep 叶子驱动（end 播一遍，播完回随机链）。
     // 这里直接压当前前台那一帧：平时靠 pendingSquash 等新动画就位，这条路没有换源。
     if (this.sleeping) {
-      playClickSound();
       const front = this.front === 0 ? this.videoA : this.videoB;
       if (front) this.startSquash(front);
       this.postSleepAction('wake');
@@ -407,8 +403,6 @@ Object.assign(PetSprite.prototype, {
       }
       return;
     }
-    // 点击音效与浏览器同位置：放在「按下已触发积分」的早退之后、点击动画判断之前
-    playClickSound();
     if (!this.animations.clicks.length) return;
     this.pendingSquash = true; // 等新点击动画切到前台后 Q 弹（压新首帧，与浏览器一致）
     this.playOnce(S.pick(this.animations.clicks));
@@ -425,42 +419,18 @@ Object.assign(PetSprite.prototype, {
    * 拖拽经过命中区：只处理带文件的拖拽。
    * 必须 preventDefault，否则窗口会把这个文件当导航打开（页面直接被替换）。
    */
-  onDragOverImage(e) {
+  preventFileNavigation(e) {
     if (!S.dragHasFiles(e)) return;
     e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
   },
 
-  /** 松手：第一张图片直接开对话并挂成待发送图；不是图片就当没发生。 */
-  onDropImage(e) {
-    const file = S.firstImageFile(e.dataTransfer);
-    if (!file) return;
-    e.preventDefault();
-    this.showChatFromMenu(file);
-  },
-
-  /** 悬停快捷键：按住 M 说话、L 开对话、S 截图、Z 切换睡/醒、D 开关待办、1-4 切显示位置。 */
+  /** 悬停快捷键：切换睡醒、打开待办和切换显示位置。 */
   onHotkey(e) {
-    // 按住说话先判：它要吃掉按住期间的自动重复，晚一步就会被输入框收走
-    if (this.hearHold.onKeyDown(e)) {
-      e.preventDefault();
-      return;
-    }
     if (!this.hoverBody) return;
     const display = S.displayOfHotkey(e);
     if (display) {
       e.preventDefault();
       this.setPetDisplay(display);
-      return;
-    }
-    if (S.isChatHotkey(e)) {
-      e.preventDefault();
-      this.showChatFromMenu();
-      return;
-    }
-    if (S.isCaptureHotkey(e)) {
-      e.preventDefault();
-      this.screenshotFromShortcut();
       return;
     }
     if (S.isTodoHotkey(e)) {
@@ -473,10 +443,5 @@ Object.assign(PetSprite.prototype, {
       e.preventDefault();
       this.postSleepAction(this.sleeping ? 'wake' : 'sleep');
     }
-  },
-
-  /** 松手：结束「按住说话」的那次录音（没在按住时什么都不做）。 */
-  onHotkeyUp(e) {
-    this.hearHold.onKeyUp(e);
   },
 });
