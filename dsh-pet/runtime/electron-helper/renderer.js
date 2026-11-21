@@ -84,6 +84,7 @@ async function boot() {
     }
     for (const s of sprites) s.dispose();
     sprites = [new PetSprite(pet)];
+    refreshPomodoroBubble();
     window.__dshPetDebug.configOk = true;
     window.__dshPetDebug.spriteCount = sprites.length;
     for (const s of sprites) s.playIdle();
@@ -97,6 +98,36 @@ async function boot() {
     scheduleReboot();
   }
 }
+
+let pomodoroView = null;
+let pomodoroTicker = null;
+
+/** 倒计时只用第一只桌宠已有的气泡。其他气泡在显示时只更新暂存文字。 */
+function refreshPomodoroBubble() {
+  const pet = sprites[0];
+  if (!pet || CONFIG.petIndex !== 0) return;
+  const now = Date.now();
+  let text = '';
+  if (pomodoroView?.notice?.until > now) {
+    text = pomodoroView.notice.text;
+  } else if (pomodoroView?.phase) {
+    const seconds = Math.max(0, Math.ceil((pomodoroView.endsAt - now) / 1000));
+    const minutes = String(Math.floor(seconds / 60)).padStart(2, '0');
+    const rest = String(seconds % 60).padStart(2, '0');
+    text = (pomodoroView.phase === 'focus' ? '专注 ' : '休息 ') + minutes + ':' + rest;
+  }
+  if (pet.pomodoroText === text) return;
+  pet.pomodoroText = text;
+  if (!pet.todoOpen && (pet.bubbleSlot === 'none' || pet.bubbleSlot === 'pomodoro')) pet.renderBubble();
+}
+
+window.petBridge?.onPomodoro?.((view) => {
+  if (CONFIG.petIndex !== 0) return;
+  pomodoroView = view;
+  refreshPomodoroBubble();
+  if (pomodoroTicker !== null) window.clearInterval(pomodoroTicker);
+  pomodoroTicker = view.phase ? window.setInterval(refreshPomodoroBubble, 1000) : null;
+});
 
 // 注入打字资源：气泡字体 + 点击/拖拽光标图标（与浏览器同一套素材，host 经 /dsh-pet-7340/ 提供）
 function injectAssets() {

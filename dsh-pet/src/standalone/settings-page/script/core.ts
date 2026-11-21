@@ -100,8 +100,8 @@ function markDirty(value) {
   if (badge) badge.hidden = !value;
 }
 
-async function callApi(method, path, body) {
-  const response = await fetch(API + path, {
+async function callApi(method, path, body, base = API) {
+  const response = await fetch(base + path, {
     method: method,
     credentials: 'same-origin',
     cache: 'no-store',

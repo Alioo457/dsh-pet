@@ -237,6 +237,7 @@ const tray = createTray({
   platform: TRAY_PLATFORM,
   helperDir: __dirname,
 });
+if (APP_MODE) globalThis.__dshPetShowBalloon = tray.showBalloon;
 
 /**
  * 应用模式的重建钩子：同进程里没有「重启 helper 进程」这条路，宿主改完显示位置会调它——

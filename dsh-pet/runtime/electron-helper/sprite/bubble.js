@@ -80,7 +80,9 @@ Object.assign(PetSprite.prototype, {
               ? 'env'
               : workOn
                 ? 'work'
-                : 'none';
+                : this.pomodoroText
+                  ? 'pomodoro'
+                  : 'none';
     // 记住当前槽位：点击处理在 init.js，必须知道「现在显示的是哪一种气泡」才能分清翻页与跳会话。
     this.bubbleSlot = slot;
     // 配图两种形态二选一：url 用完整地址，image 按素材根拼表情包路径；样式/class 共用。
@@ -113,10 +115,10 @@ Object.assign(PetSprite.prototype, {
       return;
     }
     this.bubble.innerHTML = '';
-    if (slot === 'work') {
+    if (slot === 'work' || slot === 'pomodoro') {
       const line = document.createElement('div');
       line.className = 'pet-bub-row';
-      line.textContent = this.workText;
+      line.textContent = slot === 'work' ? this.workText : this.pomodoroText;
       this.bubble.appendChild(line);
     } else if (slot === 'whisper') {
       // 配图（shared 生成的 <img> + 共用样式）：先看图再读话

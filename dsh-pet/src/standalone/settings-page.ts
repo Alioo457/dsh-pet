@@ -26,6 +26,7 @@ import { modelPickerScript } from './settings-page/script/model-picker.ts';
 import { overlayScript } from './settings-page/script/overlay.ts';
 import { petCardScript } from './settings-page/script/pet-card.ts';
 import { petsScript } from './settings-page/script/pets.ts';
+import { pomodoroScript } from './settings-page/script/pomodoro.ts';
 import { widgetsScript } from './settings-page/script/widgets.ts';
 import { settingsPage } from './settings-page/chrome.ts';
 import { settingsStyle } from './settings-page/style.ts';
@@ -62,6 +63,7 @@ export const settingsScript = [
   globalsScript(),
   modelPickerScript(),
   aiScript(),
+  pomodoroScript(),
   bootScript(),
   'boot();',
   '})();',

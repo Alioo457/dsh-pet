@@ -44,6 +44,20 @@ function createTray({
     display === 'both' ? 'web' : display === 'web' ? 'both' : display === 'desktop' ? 'none' : 'desktop';
 
   let tray = null;
+  let pendingBalloon = null;
+
+  function showBalloon(title, content, until) {
+    if (process.platform !== 'win32' || until <= Date.now()) return;
+    if (!tray) {
+      pendingBalloon = { title, content, until };
+      return;
+    }
+    try {
+      tray.displayBalloon({ title, content, iconType: 'info', noSound: true, respectQuietTime: true });
+    } catch (error) {
+      console.warn('[dsh-pet-desktop-helper] tray balloon failed:', String(error));
+    }
+  }
 
   /** 写回某只宠物的 display：宿主写完配置会重启本进程，响应可能永远不回（同 sprite.js 的 setPetDisplay） */
   function traySetPetDisplay(id, display) {
@@ -143,6 +157,11 @@ function createTray({
       tray = new Tray(trayIcon());
       tray.setToolTip('dsh-pet 桌面宠物');
       tray.setContextMenu(menu);
+      if (pendingBalloon) {
+        const { title, content, until } = pendingBalloon;
+        pendingBalloon = null;
+        showBalloon(title, content, until);
+      }
       // Windows 上 setContextMenu 只接管右键，左键默认什么都不做（macOS 相反：左键即弹菜单）
       if (platform.leftClickPopsMenu) tray.on('click', () => tray.popUpContextMenu());
     } catch (e) {
@@ -165,6 +184,7 @@ function createTray({
     start: startTray,
     refresh: refreshTray,
     exists: () => tray !== null,
+    showBalloon,
     destroy() {
       if (!tray) return;
       try {

@@ -50,6 +50,7 @@ function selectTab(name) {
       if (title) title.textContent = cell.dataset.title;
     }
   }
+  if (DESKTOP_ONLY && name === 'pomodoro') activatePomodoro();
 }
 
 function wireTabs() {

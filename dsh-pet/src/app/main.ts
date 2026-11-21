@@ -8,7 +8,7 @@
 
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { flattenPetList, readAllConfig } from '../host/config.ts';
 import { dshHomeDir } from '../host/helper-process.ts';
@@ -22,6 +22,7 @@ import { createRequestSecurity } from '../standalone/request-security.ts';
 
 import { installDesktopAuth, type DesktopSession } from './desktop-auth.ts';
 import { subscribeCodexWorkStatus } from './codex-status.ts';
+import { createPomodoro, pomodoroRoute, type PomodoroView } from './pomodoro.ts';
 import { startRouter } from './router.ts';
 import { ROUTE_SEGMENT } from '../shared/constants.ts';
 import type { DesktopWorkStatusSubscription } from '../host/work-status.ts';
@@ -31,6 +32,10 @@ import type { DesktopWorkStatusSubscription } from '../host/work-status.ts';
  * 静态 `import 'electron'` 会让 `tsc --noEmit` 找不到类型而整仓变红。
  */
 interface WebContentsLike {
+  getURL(): string;
+  isDestroyed(): boolean;
+  send(channel: 'pet:pomodoro', view: PomodoroView): void;
+  on(event: 'did-finish-load', listener: () => void): void;
   on(
     event: 'console-message',
     listener: (event: unknown, level: number, message: string, line: number, sourceId: string) => void,
@@ -44,8 +49,9 @@ interface ElectronApp {
   on(event: 'second-instance', listener: () => void): void;
   on(event: 'will-quit', listener: () => void): void;
 }
-const { app, session } = createRequire(import.meta.url)('electron') as {
+const { app, BrowserWindow, session } = createRequire(import.meta.url)('electron') as {
   app: ElectronApp;
+  BrowserWindow: { getAllWindows(): Array<{ webContents: WebContentsLike }> };
   session: { defaultSession: DesktopSession };
 };
 
@@ -103,6 +109,24 @@ async function boot(): Promise<void> {
 
   const routes: RegisteredRoute[] = [];
   let port = 0;
+  const rendererPath = join(packageRoot, 'runtime/electron-helper/index.html');
+  const rendererUrl = pathToFileURL(rendererPath).href;
+  const sendPomodoro = (contents: WebContentsLike, view: PomodoroView): void => {
+    if (!contents.isDestroyed() && contents.getURL().split(/[?#]/, 1)[0] === rendererUrl)
+      contents.send('pet:pomodoro', view);
+  };
+  const pomodoro = createPomodoro({
+    file: join(dshHomeDir(), 'dsh-pet', 'pomodoro.json'),
+    onChange(view, announcement) {
+      for (const window of BrowserWindow.getAllWindows()) sendPomodoro(window.webContents, view);
+      if (announcement && view.notice) {
+        (
+          globalThis as { __dshPetShowBalloon?: (title: string, content: string, until: number) => void }
+        ).__dshPetShowBalloon?.('番茄钟', announcement, view.notice.until);
+      }
+    },
+  });
+  routes.push(pomodoroRoute(pomodoro));
 
   // 与 CLI 同一套安全模型：令牌只经「配置页地址的 #token=」递给浏览器，不进日志
   const security = createRequestSecurity();
@@ -152,15 +176,11 @@ async function boot(): Promise<void> {
     contents.on('console-message', (_e, level, message, line, source) => {
       log(`渲染端[${level}] ${message} (${source}:${line})`);
     });
+    contents.on('did-finish-load', () => sendPomodoro(contents, pomodoro.snapshot()));
   });
   // 必须早于 Helper 的 whenReady 回调建出 file 渲染页。
   void app.whenReady().then(() => {
-    installDesktopAuth(
-      session.defaultSession,
-      origin,
-      join(packageRoot, 'runtime/electron-helper/index.html'),
-      security.token,
-    );
+    installDesktopAuth(session.defaultSession, origin, rendererPath, security.token);
   });
   process.env.DSH_PET_APP_TOKEN = security.token;
   try {
@@ -169,8 +189,22 @@ async function boot(): Promise<void> {
     delete process.env.DSH_PET_APP_TOKEN;
   }
 
+  let pomodoroClock: ReturnType<typeof setInterval> | undefined;
+  void app.whenReady().then(() => {
+    const tick = (): void => {
+      try {
+        pomodoro.tick();
+      } catch {
+        log('无法保存番茄钟进度，将重试');
+      }
+    };
+    tick();
+    pomodoroClock = setInterval(tick, 1000).unref();
+  });
+
   app.on('second-instance', () => log('已有一个实例在运行，忽略本次启动'));
   app.on('will-quit', () => {
+    clearInterval(pomodoroClock);
     // 退出前把最后一批日志刷出去（定时器最多 1s，这里显式补一次）
     void logger.flush();
     logger.dispose();

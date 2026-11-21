@@ -21,6 +21,7 @@ export function renderSettingsPage(desktopOnly = false): string {
 <nav class="nav" aria-label="设置分区"><div class="navList" role="tablist">
 ${desktopOnly ? '' : `<button type="button" class="navCell" role="tab" id="tab-chat" data-tab="chat" data-title="对话" aria-controls="panel-chat" aria-selected="true"><svg class="navGlyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3.4h10a1.1 1.1 0 0 1 1.1 1.1v5.6A1.1 1.1 0 0 1 13 11.2H8.2L5 13.6v-2.4H3a1.1 1.1 0 0 1-1.1-1.1V4.5A1.1 1.1 0 0 1 3 3.4Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg><span class="navLabel">对话</span></button>`}
 <button type="button" class="navCell" role="tab" id="tab-config" data-tab="config" data-title="配置" aria-controls="panel-config" aria-selected="${desktopOnly}"><svg class="navGlyph" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M2.6 4.6h10.8M2.6 11.4h10.8"/><circle cx="6.2" cy="4.6" r="1.6" fill="currentColor" stroke="none"/><circle cx="9.8" cy="11.4" r="1.6" fill="currentColor" stroke="none"/></g></svg><span class="navLabel">配置</span></button>
+${desktopOnly ? '<button type="button" class="navCell" role="tab" id="tab-pomodoro" data-tab="pomodoro" data-title="番茄钟" aria-controls="panel-pomodoro" aria-selected="false"><span class="navLabel">番茄钟</span></button>' : ''}
 </div></nav>
 <div class="sideFoot">独立模式</div>
 </aside>
@@ -50,6 +51,22 @@ ${desktopOnly ? '' : `<div class="testRow"><button id="test-btn" class="btn" typ
 </form>
 </div>
 </section>
+${
+  desktopOnly
+    ? `<section class="panel" id="panel-pomodoro" role="tabpanel" aria-labelledby="tab-pomodoro" hidden>
+<div class="scroll">
+<div class="card">
+<p class="cardHint">专注和休息交替计时，关掉设置页也会继续。调整时长从下一阶段生效。</p>
+<div class="field"><label for="pomodoro-focus">专注时长（分钟）</label><input id="pomodoro-focus" type="number" min="1" max="120" step="1" value="25" disabled></div>
+<div class="field"><label for="pomodoro-break">休息时长（分钟）</label><input id="pomodoro-break" type="number" min="1" max="60" step="1" value="5" disabled></div>
+<p id="pomodoro-countdown"></p>
+<div class="testRow"><button class="btn primary" id="pomodoro-start" type="button" disabled>开始专注</button><button class="btn" id="pomodoro-stop" type="button" hidden>停止</button><button class="btn" id="pomodoro-save" type="button" disabled>保存时长</button></div>
+<p class="status" id="pomodoro-status" role="status" aria-live="polite"></p>
+</div>
+</div>
+</section>`
+    : ''
+}
 ${
   desktopOnly
     ? ''

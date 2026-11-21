@@ -78,4 +78,7 @@ contextBridge.exposeInMainWorld('petBridge', {
   onPointerLeft(cb) {
     ipcRenderer.on('pet:pointer-left', () => cb());
   },
+  onPomodoro(cb) {
+    ipcRenderer.on('pet:pomodoro', (_event, view) => cb(view));
+  },
 });
