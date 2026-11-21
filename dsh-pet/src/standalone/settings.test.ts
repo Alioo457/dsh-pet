@@ -347,11 +347,33 @@ test('启动：地址片段被清掉，密钥框清空并显示已保存', async
   );
 });
 
+test('桌宠独立配置页的标题栏提供保存，并保留原保存入口', async () => {
+  const html = renderSettingsPage(true);
+  assert.match(html, /<div class="topbar">[\s\S]*?id="pet-save-top"[\s\S]*?<div class="options">/);
+  assert.match(html, /id="pet-save"/);
+  assert.doesNotMatch(settingsPage, /id="pet-save-top"/);
+  const page = await setupPage(true);
+  assert.equal(page.element('pet-save-top').listeners.click, page.element('pet-save').listeners.click);
+});
+
+test('桌宠独立版把余额服务设置和查询入口放进独立面板', () => {
+  const html = renderSettingsPage(true);
+  const config = html.match(/id="panel-config"[^]*?<\/section>/)?.[0] ?? '';
+  const balance = html.match(/id="panel-balance"[^]*?<\/section>/)?.[0] ?? '';
+  assert.match(html, /id="tab-balance"[^>]*aria-controls="panel-balance"/);
+  assert.doesNotMatch(config, /id="balance-btn"/);
+  for (const id of ['service-host', 'apiKey', 'save', 'balance-btn', 'balance-result']) {
+    assert.ok(balance.includes('id="' + id + '"'), id + ' should be in the balance panel');
+  }
+  assert.doesNotMatch(settingsPage, /id="tab-balance"/);
+  assert.match(settingsPage, /id="balance-btn"/);
+});
+
 test('桌宠独立配置页在最后提供重载按钮，沿用已鉴权的 POST 接口', async () => {
   const html = renderSettingsPage(true);
   const start = html.indexOf('id="panel-config"');
   const configPanel = html.slice(start, html.indexOf('</section>', start));
-  assert.match(configPanel, /<\/form>\s*<div class="footer">[^\n]+id="pet-reload"[^\n]+<\/div>\s*<\/div>\s*$/);
+  assert.match(configPanel, /<div class="footer">[^\n]+id="pet-reload"[^\n]+<\/div>\s*<\/div>\s*$/);
   assert.doesNotMatch(settingsPage, /id="pet-reload"/);
 
   const page = await setupPage(true);

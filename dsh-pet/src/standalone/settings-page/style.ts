@@ -63,6 +63,10 @@ a{color:var(--dsw-static-blue-500)}
 .sideFoot{flex:none;margin-top:10px;padding:9px 10px 2px;border-top:1px solid var(--dsw-alias-border-l1);font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .main{display:flex;flex-direction:column;min-width:0;min-height:0}
 .topbar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;height:56px;padding:0 30px;background:var(--dsw-alias-bg-layer-2);border-bottom:1px solid var(--dsw-alias-border-l1)}
+body[data-desktop-only] .topbar{height:auto;min-height:56px;padding-block:6px}
+.configToolbar{display:flex;min-width:0;align-items:center;justify-content:flex-end;gap:12px}
+.configToolbar .status{min-width:0;min-height:0;overflow-wrap:anywhere}
+.configToolbar .btn,.configToolbar .dirty,body[data-desktop-only] .pageTitle{flex:none}
 .pageTitle{margin:0;font-size:15px;font-weight:600;line-height:24px;color:var(--dsw-alias-label-primary)}
 .dirty{font-size:12px;color:var(--dsw-alias-label-tertiary)}
 .options{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0}
@@ -108,6 +112,7 @@ input:disabled,select:disabled,textarea:disabled{background:var(--dsw-static-neu
 .tab:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .tab[aria-selected=true]{background:var(--dsw-specific-sidebar-nav-item-active);color:var(--dsw-alias-label-primary)}
 .footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-top:1px solid var(--dsw-alias-border-l1)}
+.footer>.btn:only-child{margin-left:auto}
 .status{margin:0;min-height:20px;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}
 .status[data-error=true]{color:var(--dsw-static-red-500)}
 .status[data-ok=true]{color:var(--dsw-static-green-600)}
@@ -169,6 +174,7 @@ input:disabled,select:disabled,textarea:disabled{background:var(--dsw-static-neu
   .navLabel{flex:none}
   .sideFoot{display:none}
   .topbar{height:48px;padding:0 16px}
+  body[data-desktop-only] .topbar{min-height:48px}
   .scroll{padding:16px 16px 4px}
   .grid2,.grid3{grid-template-columns:1fr}
 }

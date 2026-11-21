@@ -168,14 +168,19 @@ function petsBody() {
   });
 }
 
+function setPetSaveDisabled(disabled) {
+  byId('pet-save').disabled = disabled;
+  const top = DESKTOP_ONLY && byId('pet-save-top');
+  if (top) top.disabled = disabled;
+}
+
 async function savePets() {
   const status = byId('pet-status');
-  const saveBtn = byId('pet-save');
   if (state.entry === 'main' && currentPets().length === 0) {
     setStatus(status, '默认条目至少要保留一只宠物，否则宿主会拒绝保存。', 'error');
     return;
   }
-  saveBtn.disabled = true;
+  setPetSaveDisabled(true);
   setStatus(status, '正在保存…');
   try {
     let merged;
@@ -209,7 +214,7 @@ async function savePets() {
   } catch (error) {
     setStatus(status, error && error.message ? error.message : String(error), 'error');
   } finally {
-    saveBtn.disabled = false;
+    setPetSaveDisabled(false);
   }
 }
 `;

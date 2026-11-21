@@ -1,8 +1,7 @@
 /**
  * 设置页启动：分区切换、初次加载与保存按钮接线。
  *
- * 配置页把桌宠与 AI 两块放在同一个面板里，各自加载各自的接口：桌宠读 /config，
- * AI 读 /standalone-ai/settings，两套保存互不影响。
+ * 桌宠配置读 /config，服务商设置读 /standalone-ai/settings，两套保存独立。
  * 缺令牌时只提示、不发任何请求——本页所有写操作都依赖那次运行有效的凭证。
  * @module dsh-pet/src/standalone/settings-page/script/boot
  */
@@ -40,6 +39,8 @@ function mountServiceSelect() {
 }
 
 function selectTab(name) {
+  const toolbar = DESKTOP_ONLY && byId('config-toolbar');
+  if (toolbar) toolbar.hidden = name !== 'config';
   for (const cell of document.querySelectorAll('[data-tab]')) {
     const active = cell.dataset.tab === name;
     cell.setAttribute('aria-selected', active ? 'true' : 'false');
@@ -114,7 +115,7 @@ async function loadPets() {
     state.meta = meta;
     initDrafts(config);
     renderPetsPanel();
-    byId('pet-save').disabled = false;
+    setPetSaveDisabled(false);
     setStatus(status, '');
   } catch (error) {
     setStatus(status, (error && error.message) || String(error), 'error');
@@ -157,6 +158,7 @@ function boot() {
   mountProtocolSelect();
   wireAiPanel();
   byId('pet-save').addEventListener('click', savePets);
+  if (DESKTOP_ONLY) byId('pet-save-top')?.addEventListener('click', savePets);
   if (DESKTOP_ONLY) byId('pet-reload')?.addEventListener('click', reloadPetConfig);
   window.addEventListener('beforeunload', (event) => {
     if (!state.dirty) return;
