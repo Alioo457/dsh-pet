@@ -59,7 +59,12 @@ export function createWorkStatusBridge(deps: WorkStatusBridgeInput) {
     // 外部来源写成 null，气泡只跳转到真实的 DSH 会话。
     const sessionId =
       snap.sessionId === EXTERNAL_WORK_SESSION || snap.sessionId === CODEX_WORK_SESSION ? null : snap.sessionId;
-    state.writeSection('workStatus', { state: snap.state, task: snap.task, sessionId });
+    state.writeSection('workStatus', {
+      state: snap.state,
+      task: snap.task,
+      sessionId,
+      ...(snap.sessionId === CODEX_WORK_SESSION ? { source: 'codex' } : {}),
+    });
   };
 
   /** 停掉挂起的补写定时器（插件卸载时调用）。 */

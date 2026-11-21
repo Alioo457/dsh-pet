@@ -22,6 +22,7 @@ import { createRequestSecurity } from '../standalone/request-security.ts';
 
 import { installDesktopAuth, type DesktopSession } from './desktop-auth.ts';
 import { subscribeCodexWorkStatus } from './codex-status.ts';
+import { createCodexQuotaMonitor } from './codex-quota.ts';
 import { createPomodoro, pomodoroRoute, type PomodoroView } from './pomodoro.ts';
 import {
   createIntervalReminder,
@@ -37,14 +38,15 @@ import type { DesktopWorkStatusSubscription } from '../host/work-status.ts';
  * `electron` 由 Electron 运行时提供，不是本包依赖；只声明实际用到的成员。
  * 静态 `import 'electron'` 会让 `tsc --noEmit` 找不到类型而整仓变红。
  */
-interface DesktopTimerEvents {
+interface DesktopViewEvents {
   'pet:pomodoro': PomodoroView;
   'pet:interval-reminder': IntervalReminderNotice | null;
+  'pet:codex-quota': string;
 }
 interface WebContentsLike {
   getURL(): string;
   isDestroyed(): boolean;
-  send<Event extends keyof DesktopTimerEvents>(channel: Event, view: DesktopTimerEvents[Event]): void;
+  send<Event extends keyof DesktopViewEvents>(channel: Event, view: DesktopViewEvents[Event]): void;
   on(event: 'did-finish-load', listener: () => void): void;
   on(
     event: 'console-message',
@@ -121,10 +123,10 @@ async function boot(): Promise<void> {
   let port = 0;
   const rendererPath = join(packageRoot, 'runtime/electron-helper/index.html');
   const rendererUrl = pathToFileURL(rendererPath).href;
-  const sendDesktopTimer = <Event extends keyof DesktopTimerEvents>(
+  const sendDesktopView = <Event extends keyof DesktopViewEvents>(
     contents: WebContentsLike,
     channel: Event,
-    view: DesktopTimerEvents[Event],
+    view: DesktopViewEvents[Event],
   ): void => {
     if (!contents.isDestroyed() && contents.getURL().split(/[?#]/, 1)[0] === rendererUrl) contents.send(channel, view);
   };
@@ -136,7 +138,7 @@ async function boot(): Promise<void> {
   const pomodoro = createPomodoro({
     file: join(dshHomeDir(), 'dsh-pet', 'pomodoro.json'),
     onChange(view, announcement) {
-      for (const window of BrowserWindow.getAllWindows()) sendDesktopTimer(window.webContents, 'pet:pomodoro', view);
+      for (const window of BrowserWindow.getAllWindows()) sendDesktopView(window.webContents, 'pet:pomodoro', view);
       if (announcement && view.notice) showTimerBalloon('番茄钟', view.notice);
     },
   });
@@ -152,7 +154,7 @@ async function boot(): Promise<void> {
         // Turning one reminder off leaves the other one's current bubble intact.
         const active = activeIntervalNotice();
         for (const window of BrowserWindow.getAllWindows())
-          sendDesktopTimer(window.webContents, 'pet:interval-reminder', active);
+          sendDesktopView(window.webContents, 'pet:interval-reminder', active);
         if (notice) {
           intervalCooldownUntil = notice.until;
           showTimerBalloon(title, notice);
@@ -184,9 +186,19 @@ async function boot(): Promise<void> {
 
   context.ctx.petDesktopOnly = true;
   const localAppData = process.env.LOCALAPPDATA;
+  const codexQuota =
+    process.platform === 'win32'
+      ? createCodexQuotaMonitor((line) => {
+          for (const window of BrowserWindow.getAllWindows())
+            sendDesktopView(window.webContents, 'pet:codex-quota', line);
+        })
+      : undefined;
   if (process.platform === 'win32' && localAppData) {
     const directory = join(localAppData, 'dsh-pet', 'codex-status');
-    const subscribe: DesktopWorkStatusSubscription = (onChange) => subscribeCodexWorkStatus(directory, onChange);
+    const subscribe: DesktopWorkStatusSubscription = (onChange) =>
+      subscribeCodexWorkStatus(directory, onChange, (state) => {
+        if (state !== null) codexQuota?.refresh();
+      });
     context.ctx.subscribeCodexWorkStatus = subscribe;
   }
 
@@ -220,8 +232,9 @@ async function boot(): Promise<void> {
       log(`渲染端[${level}] ${message} (${source}:${line})`);
     });
     contents.on('did-finish-load', () => {
-      sendDesktopTimer(contents, 'pet:pomodoro', pomodoro.snapshot());
-      sendDesktopTimer(contents, 'pet:interval-reminder', activeIntervalNotice());
+      sendDesktopView(contents, 'pet:pomodoro', pomodoro.snapshot());
+      sendDesktopView(contents, 'pet:interval-reminder', activeIntervalNotice());
+      if (codexQuota) sendDesktopView(contents, 'pet:codex-quota', codexQuota.currentLine());
     });
   });
   // 必须早于 Helper 的 whenReady 回调建出 file 渲染页。
@@ -263,6 +276,7 @@ async function boot(): Promise<void> {
 
   app.on('second-instance', () => log('已有一个实例在运行，忽略本次启动'));
   app.on('will-quit', () => {
+    codexQuota?.stop();
     clearInterval(desktopTimerClock);
     // 退出前把最后一批日志刷出去（定时器最多 1s，这里显式补一次）
     void logger.flush();

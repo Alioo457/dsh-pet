@@ -78,6 +78,35 @@ dsh plugin --profile web add file:D:/path/to/dsh-pet/dsh-pet
 
 > Release 只提供 **Windows x64**；macOS / Linux 用下面的 npm 形态。
 
+### 关联 Codex（Windows 独立桌面版）
+
+1. 安装并启动支持 Hooks 的 Codex 桌面应用或 CLI。在 Codex 中用 ChatGPT 账号登录，即可读取该账号的剩余额度。安装 Node.js 并重新打开终端，确认 `node --version` 能运行。
+2. 在桌宠解压目录打开 PowerShell，运行下面的命令，将绿色版自带的 `resources/codex-status.mjs` 注册到 Codex 用户级 `hooks.json`。
+
+   ```powershell
+   $hookPath = (Resolve-Path -LiteralPath '.\resources\codex-status.mjs').Path.Replace('\', '/')
+   $hookCommand = 'node "' + $hookPath + '"'
+   $hooks = [ordered]@{}
+   foreach ($eventName in 'UserPromptSubmit','PreToolUse','PermissionRequest','PostToolUse','Stop','Interrupt','SessionEnd') {
+     $hooks[$eventName] = @(@{ hooks = @(@{ type = 'command'; command = $hookCommand; timeout = 3 }) })
+   }
+   $codexDir = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }
+   $hooksFile = Join-Path $codexDir 'hooks.json'
+   $json = @{ hooks = $hooks } | ConvertTo-Json -Depth 8
+   if (Test-Path -LiteralPath $hooksFile) {
+     $json
+   } else {
+     New-Item -ItemType Directory -Path $codexDir -Force | Out-Null
+     [IO.File]::WriteAllText($hooksFile, $json, [Text.UTF8Encoding]::new($false))
+   }
+   ```
+
+   已有 `hooks.json` 时，命令会打印待加入的配置。把输出中 `hooks` 下的事件组加到原文件的 `hooks` 中。同名事件已有配置时，把桌宠事件组追加到对应事件数组。已有桌宠事件组时，更新其中的脚本路径即可。
+
+3. 在 Codex 桌面应用的 **Settings → Hooks**，或 Codex CLI 的 **`/hooks`** 中，核对命令指向桌宠目录里的脚本，再信任桌宠的 Hooks。打开桌宠，在 Codex 中发一条消息，桌宠气泡便会在运行状态下一行显示 `周限：20%；5H：15%` 这样的剩余额度。读不到的窗口显示 `—`。如果移动桌宠目录，请更新 Hook 命令中的路径并重新核对。
+
+[Codex Hooks 的配置和信任流程](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks) · [Codex 额度读取](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt)
+
 ### 用 npm 全局安装（Node 形态）
 
 需要 Node.js，跨平台通用：

@@ -98,6 +98,7 @@ Object.assign(PetSprite.prototype, {
     this.workOn = false;
     this.workTimer = null;
     this.workText = null;
+    this.workFromCodex = false;
     this.workState = null; // 最近一次工作状态（互动/事件动画播完恢复档位循环用）
     this.workSessionId = null; // 当前展示条目所属会话：有值才让工作气泡可点（点了跳过去）
     this.pomodoroText = ''; // 已启用且通知槽空闲时，显示阶段和剩余时间。

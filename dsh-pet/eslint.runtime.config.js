@@ -105,6 +105,8 @@ const scriptGlobals = {
   playClickSound: 'readonly',
   // events.js
   startLoops: 'readonly',
+  // renderer.js
+  codexQuotaLine: 'writable',
 };
 
 export default defineConfig([

@@ -84,4 +84,7 @@ contextBridge.exposeInMainWorld('petBridge', {
   onIntervalReminder(cb) {
     ipcRenderer.on('pet:interval-reminder', (_event, notice) => cb(notice));
   },
+  onCodexQuota(cb) {
+    ipcRenderer.on('pet:codex-quota', (_event, line) => cb(line));
+  },
 });

@@ -125,6 +125,12 @@ Object.assign(PetSprite.prototype, {
       line.textContent =
         slot === 'work' ? this.workText : slot === 'pomodoro' ? this.pomodoroText : this.intervalReminderText;
       this.bubble.appendChild(line);
+      if (slot === 'work' && this.workFromCodex) {
+        const quota = document.createElement('div');
+        quota.className = 'pet-bub-row';
+        quota.textContent = codexQuotaLine;
+        this.bubble.appendChild(quota);
+      }
     } else if (slot === 'whisper') {
       // 配图（shared 生成的 <img> + 共用样式）：先看图再读话
       if (whisperImg) this.bubble.appendChild(whisperImg);

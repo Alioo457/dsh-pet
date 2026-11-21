@@ -100,6 +100,15 @@ async function boot() {
   }
 }
 
+let codexQuotaLine = '周限：—；5H：—';
+window.petBridge?.onCodexQuota?.((line) => {
+  if (typeof line !== 'string' || line === codexQuotaLine) return;
+  codexQuotaLine = line;
+  for (const pet of sprites) {
+    if (!pet.todoOpen && pet.bubbleSlot === 'work' && pet.workFromCodex) pet.renderBubble();
+  }
+});
+
 let pomodoroView = null;
 let pomodoroTicker = null;
 

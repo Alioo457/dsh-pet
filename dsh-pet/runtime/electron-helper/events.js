@@ -21,6 +21,7 @@ PetSprite.prototype.onWorkTick = function onWorkTick(snapshot, tick) {
   if (this.frozen) return;
   const state = snapshot && snapshot.state ? snapshot.state : null;
   this.workState = state; // 当前工作状态：互动/事件动画播完恢复档位循环用
+  this.workFromCodex = snapshot?.source === 'codex';
   // 当前展示条目所属会话：点气泡跳过去要用它。外部槽（`api`）宿主已写成 null，这里只认非空串。
   this.workSessionId =
     snapshot && typeof snapshot.sessionId === 'string' && snapshot.sessionId ? snapshot.sessionId : null;
@@ -394,7 +395,7 @@ function applyWorkStatusLeaf(leaf) {
   if (!snap) return;
   workTick++;
   // 睡着不看不听：自动来源的工作状态整条跳过（动画与气泡都不更新），醒来后的下一次状态变化重新对齐
-  for (const s of sprites) if (!s.sleeping) s.onWorkTick(snap, workTick);
+  for (const s of sprites) if (!s.sleeping) s.onWorkTick({ ...snap, source: leaf.data?.source }, workTick);
 }
 
 /** 点播动画叶子 → 对应宠物播该动画。

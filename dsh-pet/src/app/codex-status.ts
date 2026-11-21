@@ -34,6 +34,7 @@ export async function readCodexWorkStatus(directory: string, now = Date.now()): 
 export function subscribeCodexWorkStatus(
   directory: string,
   onChange: (state: HostWorkStatusState | null) => void,
+  onPoll?: (state: HostWorkStatusState | null) => void,
 ): () => void {
   let stopped = false;
   let last: HostWorkStatusState | null = null;
@@ -45,6 +46,7 @@ export function subscribeCodexWorkStatus(
       last = state;
       onChange(state);
     }
+    onPoll?.(state);
     timer = setTimeout(() => void tick(), 1_000).unref();
   };
   void tick();
