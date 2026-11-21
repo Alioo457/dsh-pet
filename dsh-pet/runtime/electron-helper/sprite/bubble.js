@@ -62,7 +62,7 @@ Object.assign(PetSprite.prototype, {
     }
     // 气泡单槽：同一时刻只显示一个（优先级：终态任务 > 碎碎念/对话 > 余额 > 非终态任务）。
     // 终态任务不让位：完成/失败气泡只活 10s，被顶掉就彻底看不到；非终态气泡常驻，让位零损失。
-    // 工作气泡与碎碎念同款样式（宽度自适应 + 自动换行）；配图标记交给 CSS（带图时取消 min-width）。
+    // 工作通知用标准气泡，字号沿用「外观与字体」；配图标记交给 CSS（带图时取消 min-width）。
     // 图片 URL 与视频同规则：传 BASE 前缀（桌面是 file:// 页面，必须绝对地址），素材根同理。
     const workOn = !!(this.workOn && this.workText);
     const whisperOn = !!(this.whisperOn && this.whisperView);
@@ -93,7 +93,7 @@ Object.assign(PetSprite.prototype, {
     this.bubble.classList.toggle(
       'is-whisper',
       // 余额「文字说明」也套紧凑变体：字号更小、宽度下限更窄，多行说明更紧凑
-      slot === 'whisper' || slot === 'work' || (slot === 'balance' && this.balanceWrap),
+      slot === 'whisper' || (slot === 'balance' && this.balanceWrap),
     );
     this.bubble.classList.toggle(S.MEME_BUBBLE_CLASS, !!whisperImg);
     // 可点/展开两个状态类：可点 → 气泡参与命中区（见 syncInputRegions）；index>0 → 更宽的盒与紧凑字号。
