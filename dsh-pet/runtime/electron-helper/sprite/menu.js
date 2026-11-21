@@ -63,6 +63,7 @@ Object.assign(PetSprite.prototype, {
       y: e.clientY,
       // 只允许在「窗口 ∩ 工作区」内显示：宠物贴边时外扩余量伸出屏幕，菜单走进那里会被 OS 裁掉
       clamp: this.visibleClampRect(),
+      desktopLayout: { onChange: () => this.syncInputRegions() },
       onAction: (leaf) => this.onMenuAction(leaf),
       // 菜单被点外/Esc 关闭（非菜单项路径）：同样复位可交互标记，恢复命中区判定
       onClose: () => {

@@ -118,6 +118,51 @@ describe('pickPanelPosition —— 级联面板不重叠', () => {
     assert.ok(p.top >= 4 - 0.5 && p.top + 120 <= 200 - 4 + 0.5, 'top 越界');
   });
 
+  test('桌面贴右下角时，工作状态子菜单不盖住已有菜单', () => {
+    const root = box(207, 70, 179, 246);
+    const parent = box(53, 12, 150, 304);
+    const p = pickPanelPosition(
+      {
+        panel: { w: 169, h: 187 },
+        item: { left: 58, right: 198, top: 228, bottom: 257 },
+        parent,
+        others: [root, parent],
+        clamp: { x: 0, y: 0, w: 390, h: 320 },
+      },
+      false,
+    );
+    assert.equal(p, null, '侧面放不下时交由桌面菜单原栏展开');
+  });
+
+  test('桌面侧向展开必须仍与触发行相邻', () => {
+    const root = box(320, 80, 150, 240);
+    const parent = box(165, 5, 150, 300);
+    const p = pickPanelPosition(
+      {
+        panel: { w: 150, h: 50 },
+        item: { left: 170, right: 310, top: 230, bottom: 259 },
+        parent,
+        others: [root, parent],
+        clamp: { x: 0, y: 0, w: 475, h: 330 },
+      },
+      false,
+    );
+    assert.equal(p?.left, 11);
+    assert.equal(p?.top, 230);
+
+    const disconnected = pickPanelPosition(
+      {
+        panel: { w: 150, h: 50 },
+        item: { left: 170, right: 310, top: 230, bottom: 259 },
+        parent,
+        others: [root, parent],
+        clamp: { x: 160, y: 0, w: 315, h: 330 },
+      },
+      false,
+    );
+    assert.equal(disconnected, null, '不能把子菜单摆到与触发行不相邻的地方');
+  });
+
   test('没有其它面板时与旧行为一致（右侧展开、顶对齐触发项）', () => {
     const p = pickPanelPosition({
       panel: { w: 220, h: 320 },

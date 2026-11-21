@@ -28,8 +28,10 @@ export function mountContextMenu(opts: {
   onClose?: () => void;
   /** 菜单允许占用的矩形（视口局部坐标）；缺省 = 整个视口 */
   clamp?: { x: number; y: number; w: number; h: number };
+  /** 桌面窗口空间不足时原栏展开，并重新登记鼠标命中区域。 */
+  desktopLayout?: { onChange: () => void };
 }): ContextMenuMount {
-  const { tree, x, y, onAction, onClose, clamp } = opts;
+  const { tree, x, y, onAction, onClose, clamp, desktopLayout } = opts;
   // 防御：clamp 含非有限值（如坐标来源缺失变成 NaN）时回落整个视口，否则面板会落到 (0,0)
   const c =
     clamp && Number.isFinite(clamp.x + clamp.y + clamp.w + clamp.h)
@@ -47,6 +49,19 @@ export function mountContextMenu(opts: {
   const openChild = new Map<HTMLElement, HTMLElement>();
   /** 指针整体离开菜单树的兜底关闭定时器（root mouseover 重新进入即取消） */
   let leaveTimer: number | null = null;
+  let expandTimer: number | null = null;
+  // 替换整列可能把别的分类放到静止光标下面。下一次移动或点击才允许继续展开。
+  let waitForPointerMove = false;
+  const cancelExpand = (): void => {
+    if (expandTimer !== null) window.clearTimeout(expandTimer);
+    expandTimer = null;
+  };
+  const visiblePanels = (): HTMLElement[] =>
+    Array.from(root.querySelectorAll<HTMLElement>('.dsh-pet-menu-column')).filter((p) => p.style.display !== 'none');
+  const placeInView = (panel: HTMLElement, left: number, top: number): void => {
+    panel.style.left = Math.max(c.x + 4, Math.min(left, c.x + c.w - panel.offsetWidth - 4)) + 'px';
+    panel.style.top = Math.max(c.y + 4, Math.min(top, c.y + c.h - panel.offsetHeight - 4)) + 'px';
+  };
 
   /** 关闭某面板及其后代面板整条链（display:none + 清 openChild 链） */
   const hideChain = (panel: HTMLElement): void => {
@@ -60,27 +75,74 @@ export function mountContextMenu(opts: {
 
   /** 把子面板摆到触发项旁边：优先父面板右侧，放不下翻到父面板左侧，
    *  且不与任何已展开面板重叠；贴边时夹进 clamp。 */
-  const showPanel = (panel: HTMLElement, item: HTMLElement): void => {
+  const showPanel = (panel: HTMLElement, item: HTMLElement): boolean => {
     const rect = item.getBoundingClientRect();
     panel.style.left = '';
     panel.style.top = '';
     panel.style.display = 'block';
     const parentEl = item.parentElement;
     const pr = parentEl ? parentEl.getBoundingClientRect() : rect;
-    const pick = pickPanelPosition({
+    const position = {
       panel: { w: panel.offsetWidth, h: panel.offsetHeight },
-      item: { left: rect.left, right: rect.right, top: rect.top },
+      item: { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom },
       parent: { left: pr.left, right: pr.right, top: pr.top },
-      others: Array.from(root.querySelectorAll<HTMLElement>('.dsh-pet-menu-column'))
-        .filter((p) => p !== panel && p.style.display !== 'none')
+      others: visiblePanels()
+        .filter((p) => p !== panel)
         .map((p) => {
           const b = p.getBoundingClientRect();
           return { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
         }),
       clamp: { x: c.x, y: c.y, w: c.w, h: c.h },
-    });
+    };
+    const pick = desktopLayout ? pickPanelPosition(position, false) : pickPanelPosition(position);
+    if (!pick) {
+      panel.style.display = 'none';
+      return false;
+    }
     panel.style.left = pick.left + 'px';
     panel.style.top = pick.top + 'px';
+    if (desktopLayout) {
+      const arrow = item.querySelector('.dsh-pet-menu-arrow');
+      if (arrow) arrow.textContent = pick.left < pr.left ? '◂' : '▸';
+    }
+    return true;
+  };
+
+  /** 空间不足时让子菜单独占可用区域，返回时恢复原来的列与滚动位置。 */
+  const replacePanels = (parent: HTMLElement, child: HTMLElement): void => {
+    const rect = parent.getBoundingClientRect();
+    const ancestors = visiblePanels().map((panel) => ({ panel, scrollTop: panel.scrollTop }));
+    const minWidth = child.style.minWidth;
+    const minHeight = child.style.minHeight;
+    const back = document.createElement('button');
+    back.type = 'button';
+    back.className = 'dsh-pet-menu-item dsh-pet-menu-back';
+    back.textContent = '返回上级';
+    back.addEventListener('click', (event) => {
+      event.stopPropagation();
+      cancelExpand();
+      waitForPointerMove = true;
+      hideChain(child);
+      child.style.minWidth = minWidth;
+      child.style.minHeight = minHeight;
+      back.remove();
+      openChild.delete(parent);
+      for (const { panel, scrollTop } of ancestors) {
+        panel.style.display = 'block';
+        panel.scrollTop = scrollTop;
+      }
+      desktopLayout?.onChange();
+    });
+    waitForPointerMove = true;
+    child.prepend(back);
+    child.style.minWidth = rect.width + 'px';
+    child.style.minHeight = rect.height + 'px';
+    child.style.display = 'block';
+    child.scrollTop = 0;
+    placeInView(child, rect.left, rect.top);
+    for (const { panel } of ancestors) panel.style.display = 'none';
+    openChild.set(parent, child);
+    desktopLayout?.onChange();
   };
 
   /** 构建一层面板；分支项的子面板平级挂到 root 下、不嵌套。
@@ -90,7 +152,11 @@ export function mountContextMenu(opts: {
     panel.className = 'dsh-pet-menu-column';
     panel.style.display = 'none';
     // 桌面 clamp：把列高封顶到可视矩形内（否则 62vh 相对的是窗口高度，可视区更小时仍会溢出被裁）
-    if (clamp) panel.style.maxHeight = Math.min(460, Math.max(120, c.h - 16)) + 'px';
+    if (desktopLayout) {
+      panel.style.minWidth = Math.max(1, Math.min(150, c.w - 8)) + 'px';
+      panel.style.maxWidth = Math.max(1, Math.min(300, c.w - 8)) + 'px';
+      panel.style.maxHeight = Math.max(1, Math.min(460, c.h - 8)) + 'px';
+    } else if (clamp) panel.style.maxHeight = Math.min(460, Math.max(120, c.h - 16)) + 'px';
     root.appendChild(panel);
     for (const node of nodes) {
       const item = document.createElement('div');
@@ -108,17 +174,45 @@ export function mountContextMenu(opts: {
         const childPanel = buildPanel(node.children); // 递归：子面板已入树（晚于本面板）
         // 悬停分支：先收掉本面板其它分支已展开的子面板链，再展开当前的。
         // 指针在本菜单树内移动绝不自动收起——跨 4px 缝隙或面板间隙都不会触发关闭。
-        item.addEventListener('mouseenter', () => {
+        const expand = (clicked: boolean): void => {
+          cancelExpand();
           const prev = openChild.get(panel);
+          if (desktopLayout && prev === childPanel && childPanel.style.display !== 'none') return;
           if (prev && prev !== childPanel) hideChain(prev);
-          openChild.set(panel, childPanel);
-          showPanel(childPanel, item);
+          if (showPanel(childPanel, item)) {
+            openChild.set(panel, childPanel);
+          } else {
+            openChild.delete(panel);
+            if (clicked) {
+              replacePanels(panel, childPanel);
+              return;
+            }
+            // 掠过分类时不切换整列，停在这一行或点击才原栏进入。
+            expandTimer = window.setTimeout(() => {
+              expandTimer = null;
+              replacePanels(panel, childPanel);
+            }, 160);
+          }
+          desktopLayout?.onChange();
+        };
+        item.addEventListener('mouseenter', () => {
+          if (!waitForPointerMove) expand(false);
         });
+        if (desktopLayout) {
+          item.addEventListener('mousemove', () => {
+            if (!waitForPointerMove) return;
+            waitForPointerMove = false;
+            expand(false);
+          });
+          item.addEventListener('mouseleave', cancelExpand);
+          item.addEventListener('click', () => expand(true));
+        }
       } else {
         // 叶子项不展开子菜单；进入时收起同面板已展开的子面板链，否则它会一直挂着
         item.addEventListener('mouseenter', () => {
           const prev = openChild.get(panel);
           if (prev) hideChain(prev);
+          desktopLayout?.onChange();
         });
         // 缩略图必须在 label 之前：菜单项是 flex 行，图片靠左、文字紧随其后。
         // 只给配图叶子带 thumb，其余项结构不变（不占位、不改变行高）。
@@ -167,10 +261,7 @@ export function mountContextMenu(opts: {
   // 根面板定位：按 (x,y) 下落，超出 clamp 矩形时夹回（与子面板同一套逻辑但无触发项）
   rootPanel.style.left = '';
   rootPanel.style.top = '';
-  const rw = rootPanel.offsetWidth;
-  const rh = rootPanel.offsetHeight;
-  rootPanel.style.left = Math.max(c.x + 4, Math.min(x, c.x + c.w - rw - 4)) + 'px';
-  rootPanel.style.top = Math.max(c.y + 4, Math.min(y, c.y + c.h - rh - 4)) + 'px';
+  placeInView(rootPanel, x, y);
 
   // 指针整体离开菜单树（离开全部面板的并集）→ 200ms 后关闭整棵菜单；
   // 期间任何指针移动（mouseover 冒泡到 root）都视为仍在菜单内，取消关闭
@@ -187,6 +278,10 @@ export function mountContextMenu(opts: {
       leaveTimer = null;
     }
   });
+  if (desktopLayout)
+    root.addEventListener('mousemove', () => {
+      waitForPointerMove = false;
+    });
 
   const onDocPointerDown = (e: MouseEvent): void => {
     if (closed) return;
@@ -203,6 +298,7 @@ export function mountContextMenu(opts: {
   const close = (): void => {
     if (closed) return;
     closed = true;
+    cancelExpand();
     if (leaveTimer !== null) window.clearTimeout(leaveTimer);
     leaveTimer = null;
     document.removeEventListener('mousedown', onDocPointerDown, true);
