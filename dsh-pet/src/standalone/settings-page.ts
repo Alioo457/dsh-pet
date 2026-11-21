@@ -27,7 +27,7 @@ import { overlayScript } from './settings-page/script/overlay.ts';
 import { petCardScript } from './settings-page/script/pet-card.ts';
 import { petsScript } from './settings-page/script/pets.ts';
 import { pomodoroScript } from './settings-page/script/pomodoro.ts';
-import { sittingReminderScript } from './settings-page/script/sitting-reminder.ts';
+import { intervalReminderScript } from './settings-page/script/interval-reminder.ts';
 import { widgetsScript } from './settings-page/script/widgets.ts';
 import { settingsPage } from './settings-page/chrome.ts';
 import { settingsStyle } from './settings-page/style.ts';
@@ -65,7 +65,7 @@ export const settingsScript = [
   modelPickerScript(),
   aiScript(),
   pomodoroScript(),
-  sittingReminderScript(),
+  intervalReminderScript(),
   bootScript(),
   'boot();',
   '})();',

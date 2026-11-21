@@ -85,7 +85,7 @@ async function boot() {
     for (const s of sprites) s.dispose();
     sprites = [new PetSprite(pet)];
     refreshPomodoroBubble();
-    refreshSittingReminderBubble();
+    refreshIntervalReminderBubble();
     window.__dshPetDebug.configOk = true;
     window.__dshPetDebug.spriteCount = sprites.length;
     for (const s of sprites) s.playIdle();
@@ -108,8 +108,9 @@ function refreshPomodoroBubble() {
   const pet = sprites[0];
   if (!pet || CONFIG.petIndex !== 0) return;
   const now = Date.now();
+  const announcing = pomodoroView?.notice?.until > now;
   let text = '';
-  if (pomodoroView?.notice?.until > now) {
+  if (announcing) {
     text = pomodoroView.notice.text;
   } else if (pomodoroView?.phase) {
     const seconds = Math.max(0, Math.ceil((pomodoroView.endsAt - now) / 1000));
@@ -117,9 +118,16 @@ function refreshPomodoroBubble() {
     const rest = String(seconds % 60).padStart(2, '0');
     text = (pomodoroView.phase === 'focus' ? '专注 ' : '休息 ') + minutes + ':' + rest;
   }
-  if (pet.pomodoroText === text) return;
+  if (pet.pomodoroText === text && pet.pomodoroNoticeActive === announcing) return;
   pet.pomodoroText = text;
-  if (!pet.todoOpen && (pet.bubbleSlot === 'none' || pet.bubbleSlot === 'pomodoro')) pet.renderBubble();
+  pet.pomodoroNoticeActive = announcing;
+  if (
+    !pet.todoOpen &&
+    (pet.bubbleSlot === 'none' ||
+      pet.bubbleSlot === 'pomodoro' ||
+      (announcing && pet.bubbleSlot === 'interval-reminder'))
+  )
+    pet.renderBubble();
 }
 
 window.petBridge?.onPomodoro?.((view) => {
@@ -130,29 +138,29 @@ window.petBridge?.onPomodoro?.((view) => {
   pomodoroTicker = view.phase ? window.setInterval(refreshPomodoroBubble, 1000) : null;
 });
 
-let sittingReminderNotice = null;
-let sittingReminderTimeout = null;
+let intervalReminderNotice = null;
+let intervalReminderTimeout = null;
 
-function refreshSittingReminderBubble() {
+function refreshIntervalReminderBubble() {
   const pet = sprites[0];
   if (!pet || CONFIG.petIndex !== 0) return;
-  const text = sittingReminderNotice?.until > Date.now() ? sittingReminderNotice.text : '';
-  if (pet.sittingReminderText === text) return;
-  pet.sittingReminderText = text;
-  if (!pet.todoOpen && ['none', 'pomodoro', 'sitting-reminder'].includes(pet.bubbleSlot)) pet.renderBubble();
+  const text = intervalReminderNotice?.until > Date.now() ? intervalReminderNotice.text : '';
+  if (pet.intervalReminderText === text) return;
+  pet.intervalReminderText = text;
+  if (!pet.todoOpen && ['none', 'pomodoro', 'interval-reminder'].includes(pet.bubbleSlot)) pet.renderBubble();
 }
 
-window.petBridge?.onSittingReminder?.((notice) => {
+window.petBridge?.onIntervalReminder?.((notice) => {
   if (CONFIG.petIndex !== 0) return;
-  if (sittingReminderTimeout !== null) window.clearTimeout(sittingReminderTimeout);
-  sittingReminderNotice = notice;
-  refreshSittingReminderBubble();
-  sittingReminderTimeout = notice
+  if (intervalReminderTimeout !== null) window.clearTimeout(intervalReminderTimeout);
+  intervalReminderNotice = notice;
+  refreshIntervalReminderBubble();
+  intervalReminderTimeout = notice
     ? window.setTimeout(
         () => {
-          sittingReminderNotice = null;
-          sittingReminderTimeout = null;
-          refreshSittingReminderBubble();
+          intervalReminderNotice = null;
+          intervalReminderTimeout = null;
+          refreshIntervalReminderBubble();
         },
         Math.max(0, notice.until - Date.now()),
       )

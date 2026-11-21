@@ -24,11 +24,11 @@ import { installDesktopAuth, type DesktopSession } from './desktop-auth.ts';
 import { subscribeCodexWorkStatus } from './codex-status.ts';
 import { createPomodoro, pomodoroRoute, type PomodoroView } from './pomodoro.ts';
 import {
-  createSittingReminder,
-  sittingReminderRoute,
-  SITTING_NOTICE_MS,
-  type SittingReminderNotice,
-} from './sitting-reminder.ts';
+  createIntervalReminder,
+  intervalReminderRoute,
+  INTERVAL_NOTICE_MS,
+  type IntervalReminderNotice,
+} from './interval-reminder.ts';
 import { startRouter } from './router.ts';
 import { ROUTE_SEGMENT } from '../shared/constants.ts';
 import type { DesktopWorkStatusSubscription } from '../host/work-status.ts';
@@ -39,7 +39,7 @@ import type { DesktopWorkStatusSubscription } from '../host/work-status.ts';
  */
 interface DesktopTimerEvents {
   'pet:pomodoro': PomodoroView;
-  'pet:sitting-reminder': SittingReminderNotice | null;
+  'pet:interval-reminder': IntervalReminderNotice | null;
 }
 interface WebContentsLike {
   getURL(): string;
@@ -128,7 +128,7 @@ async function boot(): Promise<void> {
   ): void => {
     if (!contents.isDestroyed() && contents.getURL().split(/[?#]/, 1)[0] === rendererUrl) contents.send(channel, view);
   };
-  const showTimerBalloon = (title: string, notice: SittingReminderNotice): void => {
+  const showTimerBalloon = (title: string, notice: IntervalReminderNotice): void => {
     (
       globalThis as { __dshPetShowBalloon?: (title: string, content: string, until: number) => void }
     ).__dshPetShowBalloon?.(title, notice.text, notice.until);
@@ -140,15 +140,36 @@ async function boot(): Promise<void> {
       if (announcement && view.notice) showTimerBalloon('番茄钟', view.notice);
     },
   });
-  const sittingReminder = createSittingReminder({
-    file: join(dshHomeDir(), 'dsh-pet', 'sitting-reminder.json'),
-    onNotice(notice) {
-      for (const window of BrowserWindow.getAllWindows())
-        sendDesktopTimer(window.webContents, 'pet:sitting-reminder', notice);
-      if (notice) showTimerBalloon('久坐提醒', notice);
-    },
+  let intervalCooldownUntil = 0;
+  const intervalReminders = [
+    { id: 'sitting-reminder', title: '久坐提醒', defaultMessage: '该起来活动一下啦！' },
+    { id: 'water-reminder', title: '喝水提醒', defaultMessage: '该喝水啦！' },
+  ].map(({ id, title, defaultMessage }) => {
+    const timer = createIntervalReminder({
+      file: join(dshHomeDir(), 'dsh-pet', id + '.json'),
+      defaultMessage,
+      onNotice(notice) {
+        // Turning one reminder off leaves the other one's current bubble intact.
+        const active = activeIntervalNotice();
+        for (const window of BrowserWindow.getAllWindows())
+          sendDesktopTimer(window.webContents, 'pet:interval-reminder', active);
+        if (notice) {
+          intervalCooldownUntil = notice.until;
+          showTimerBalloon(title, notice);
+        }
+      },
+    });
+    routes.push(intervalReminderRoute(timer, id, defaultMessage));
+    return { title, timer };
   });
-  routes.push(pomodoroRoute(pomodoro), sittingReminderRoute(sittingReminder));
+  const activeIntervalNotice = (): IntervalReminderNotice | null => {
+    for (const { timer } of intervalReminders) {
+      const notice = timer.notice();
+      if (notice) return notice;
+    }
+    return null;
+  };
+  routes.push(pomodoroRoute(pomodoro));
 
   // 与 CLI 同一套安全模型：令牌只经「配置页地址的 #token=」递给浏览器，不进日志
   const security = createRequestSecurity();
@@ -200,7 +221,7 @@ async function boot(): Promise<void> {
     });
     contents.on('did-finish-load', () => {
       sendDesktopTimer(contents, 'pet:pomodoro', pomodoro.snapshot());
-      sendDesktopTimer(contents, 'pet:sitting-reminder', sittingReminder.notice());
+      sendDesktopTimer(contents, 'pet:interval-reminder', activeIntervalNotice());
     });
   });
   // 必须早于 Helper 的 whenReady 回调建出 file 渲染页。
@@ -222,13 +243,18 @@ async function boot(): Promise<void> {
       } catch {
         log('无法保存番茄钟进度，将重试');
       }
-      try {
-        // Keep the existing phase alert on schedule. A coincident sitting reminder waits for its own slot.
-        const phase = pomodoro.snapshot();
-        const pomodoroSoon = phase.endsAt !== null && phase.endsAt - Date.now() < SITTING_NOTICE_MS;
-        sittingReminder.tick(!phase.notice && !pomodoroSoon);
-      } catch {
-        log('无法保存久坐提醒进度，将重试');
+      // Keep the existing phase alert on schedule and leave each new alert enough time to be read.
+      const phase = pomodoro.snapshot();
+      const now = Date.now();
+      const pomodoroSoon = phase.endsAt !== null && phase.endsAt - now < INTERVAL_NOTICE_MS;
+      if (phase.notice || pomodoroSoon || now < intervalCooldownUntil) return;
+      for (const { title, timer } of intervalReminders) {
+        try {
+          timer.tick();
+          if (timer.notice()) return;
+        } catch {
+          log('无法保存' + title + '进度，将重试');
+        }
       }
     };
     tick();

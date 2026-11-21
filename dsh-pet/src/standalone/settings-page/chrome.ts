@@ -9,7 +9,20 @@
  * @module dsh-pet/src/standalone/settings-page/chrome
  */
 
-/** 渲染设置页。独立 Electron 应用只提供桌宠和播报设置。 */
+function renderIntervalReminderPanel(id: string, title: string, defaultMessage: string): string {
+  return `<section class="panel" id="panel-${id}" role="tabpanel" aria-labelledby="tab-${id}" hidden>
+<div class="scroll">
+<form class="card" id="${id}-form">
+<label class="rowCheck"><input id="${id}-enabled" type="checkbox" disabled><span class="rowCheckText"><span class="rowCheckTitle">启用${title}</span><span class="rowCheckHint">桌宠按设定间隔提醒，重新打开桌宠后续算。</span></span></label>
+<div class="field"><label for="${id}-interval">提醒间隔（分钟）</label><input id="${id}-interval" type="number" min="5" max="300" step="1" value="60" required disabled></div>
+<div class="field"><label for="${id}-message">提示语</label><input id="${id}-message" type="text" maxlength="80" placeholder="${defaultMessage}" disabled></div>
+<div class="testRow"><button class="btn primary" id="${id}-save" type="submit" disabled>保存提醒</button><p class="status" id="${id}-status" role="status" aria-live="polite"></p></div>
+</form>
+</div>
+</section>`;
+}
+
+/** 渲染设置页。定时提醒入口只在独立 Electron 应用中提供。 */
 export function renderSettingsPage(desktopOnly = false): string {
   return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><base href="/"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -23,6 +36,7 @@ ${desktopOnly ? '' : `<button type="button" class="navCell" role="tab" id="tab-c
 <button type="button" class="navCell" role="tab" id="tab-config" data-tab="config" data-title="配置" aria-controls="panel-config" aria-selected="${desktopOnly}"><svg class="navGlyph" viewBox="0 0 16 16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M2.6 4.6h10.8M2.6 11.4h10.8"/><circle cx="6.2" cy="4.6" r="1.6" fill="currentColor" stroke="none"/><circle cx="9.8" cy="11.4" r="1.6" fill="currentColor" stroke="none"/></g></svg><span class="navLabel">配置</span></button>
 ${desktopOnly ? '<button type="button" class="navCell" role="tab" id="tab-pomodoro" data-tab="pomodoro" data-title="番茄钟" aria-controls="panel-pomodoro" aria-selected="false"><span class="navLabel">番茄钟</span></button>' : ''}
 ${desktopOnly ? '<button type="button" class="navCell" role="tab" id="tab-sitting-reminder" data-tab="sitting-reminder" data-title="久坐提醒" aria-controls="panel-sitting-reminder" aria-selected="false"><span class="navLabel">久坐提醒</span></button>' : ''}
+${desktopOnly ? '<button type="button" class="navCell" role="tab" id="tab-water-reminder" data-tab="water-reminder" data-title="喝水提醒" aria-controls="panel-water-reminder" aria-selected="false"><span class="navLabel">喝水提醒</span></button>' : ''}
 </div></nav>
 <div class="sideFoot">独立模式</div>
 </aside>
@@ -68,20 +82,8 @@ ${
 </section>`
     : ''
 }
-${
-  desktopOnly
-    ? `<section class="panel" id="panel-sitting-reminder" role="tabpanel" aria-labelledby="tab-sitting-reminder" hidden>
-<div class="scroll">
-<form class="card" id="sitting-reminder-form">
-<label class="rowCheck"><input id="sitting-reminder-enabled" type="checkbox" disabled><span class="rowCheckText"><span class="rowCheckTitle">启用久坐提醒</span><span class="rowCheckHint">桌宠按设定间隔提醒，重新打开桌宠后续算。</span></span></label>
-<div class="field"><label for="sitting-reminder-interval">提醒间隔（分钟）</label><input id="sitting-reminder-interval" type="number" min="5" max="300" step="1" value="60" required disabled></div>
-<div class="field"><label for="sitting-reminder-message">提示语</label><input id="sitting-reminder-message" type="text" maxlength="80" placeholder="该起来活动一下啦！" disabled></div>
-<div class="testRow"><button class="btn primary" id="sitting-reminder-save" type="submit" disabled>保存提醒</button><p class="status" id="sitting-reminder-status" role="status" aria-live="polite"></p></div>
-</form>
-</div>
-</section>`
-    : ''
-}
+${desktopOnly ? renderIntervalReminderPanel('sitting-reminder', '久坐提醒', '该起来活动一下啦！') : ''}
+${desktopOnly ? renderIntervalReminderPanel('water-reminder', '喝水提醒', '该喝水啦！') : ''}
 ${
   desktopOnly
     ? ''

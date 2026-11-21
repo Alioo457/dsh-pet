@@ -3,10 +3,15 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createSittingReminder, parseSittingReminderSettings, type SittingReminderNotice } from './sitting-reminder.ts';
+import {
+  createIntervalReminder,
+  parseIntervalReminderSettings,
+  type IntervalReminderNotice,
+} from './interval-reminder.ts';
 
 const minute = 60_000;
 const settings = { enabled: true, intervalMinutes: 5, message: '起来活动一下' };
+const defaultMessage = '该起来活动一下啦！';
 
 test('启用后的第一轮从完整间隔开始，重启保留计时起点', (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'dsh-sitting-'));
@@ -14,10 +19,11 @@ test('启用后的第一轮从完整间隔开始，重启保留计时起点', (t
   const file = join(directory, 'sitting-reminder.json');
   let now = minute;
   const start = now;
-  const events: SittingReminderNotice[] = [];
+  const events: IntervalReminderNotice[] = [];
   const create = () =>
-    createSittingReminder({
+    createIntervalReminder({
       file,
+      defaultMessage,
       now: () => now,
       onNotice: (notice) => {
         if (notice) events.push(notice);
@@ -50,8 +56,9 @@ test('逾期只补一次提示，暂缓期间保留到期提醒，停用立即�
   let now = 10 * minute;
   let notices = 0;
   const make = () =>
-    createSittingReminder({
+    createIntervalReminder({
       file,
+      defaultMessage,
       now: () => now,
       onNotice: (notice) => {
         if (notice) notices += 1;
@@ -77,9 +84,38 @@ test('逾期只补一次提示，暂缓期间保留到期提醒，停用立即�
 });
 
 test('接受合法间隔和提示语，拒绝范围外和超长输入', () => {
-  assert.deepEqual(parseSittingReminderSettings(settings), settings);
-  assert.equal(parseSittingReminderSettings({ ...settings, message: '  ' })?.message, '该起来活动一下啦！');
-  assert.equal(parseSittingReminderSettings({ ...settings, intervalMinutes: 4 }), null);
-  assert.equal(parseSittingReminderSettings({ ...settings, intervalMinutes: 301 }), null);
-  assert.equal(parseSittingReminderSettings({ ...settings, message: '字'.repeat(81) }), null);
+  assert.deepEqual(parseIntervalReminderSettings(settings, defaultMessage), settings);
+  assert.equal(parseIntervalReminderSettings({ ...settings, message: '  ' }, defaultMessage)?.message, defaultMessage);
+  assert.equal(parseIntervalReminderSettings({ ...settings, intervalMinutes: 4 }, defaultMessage), null);
+  assert.equal(parseIntervalReminderSettings({ ...settings, intervalMinutes: 301 }, defaultMessage), null);
+  assert.equal(parseIntervalReminderSettings({ ...settings, message: '字'.repeat(81) }, defaultMessage), null);
+});
+
+test('喝水与久坐可以独立启停并持久化自己的时长和提示', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'dsh-reminders-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  let now = 1000;
+  const sitting = createIntervalReminder({ file: join(directory, 'sitting.json'), defaultMessage, now: () => now });
+  const waterOptions = {
+    file: join(directory, 'water.json'),
+    defaultMessage: '该喝水啦！',
+    now: () => now,
+  };
+  const water = createIntervalReminder(waterOptions);
+  assert.equal(water.snapshot().message, waterOptions.defaultMessage);
+  sitting.configure(settings);
+  assert.equal(water.snapshot().enabled, false);
+  water.configure({ enabled: true, intervalMinutes: 10, message: '喝杯水' });
+  now += 5 * minute;
+  sitting.tick();
+  water.tick();
+  assert.equal(water.notice(), null);
+  sitting.configure({ ...settings, enabled: false });
+  assert.equal(water.snapshot().enabled, true);
+  const restored = createIntervalReminder(waterOptions);
+  assert.deepEqual(restored.snapshot(), water.snapshot());
+  now += 5 * minute;
+  restored.tick();
+  assert.equal(restored.notice()?.text, '喝杯水');
+  assert.equal(sitting.notice(), null);
 });

@@ -69,7 +69,12 @@ Object.assign(PetSprite.prototype, {
     const balanceOn = !!(this.bubbleOn && this.balanceView);
     const envOn = !!(this.envOn && this.envState);
     const workTerminal = this.workState === 'success' || this.workState === 'error';
-    const timerSlot = this.sittingReminderText ? 'sitting-reminder' : this.pomodoroText ? 'pomodoro' : 'none';
+    const timerSlot =
+      this.intervalReminderText && !this.pomodoroNoticeActive
+        ? 'interval-reminder'
+        : this.pomodoroText
+          ? 'pomodoro'
+          : 'none';
     const slot =
       workTerminal && workOn
         ? 'work'
@@ -114,11 +119,11 @@ Object.assign(PetSprite.prototype, {
       return;
     }
     this.bubble.innerHTML = '';
-    if (slot === 'work' || slot === 'pomodoro' || slot === 'sitting-reminder') {
+    if (slot === 'work' || slot === 'pomodoro' || slot === 'interval-reminder') {
       const line = document.createElement('div');
       line.className = 'pet-bub-row';
       line.textContent =
-        slot === 'work' ? this.workText : slot === 'pomodoro' ? this.pomodoroText : this.sittingReminderText;
+        slot === 'work' ? this.workText : slot === 'pomodoro' ? this.pomodoroText : this.intervalReminderText;
       this.bubble.appendChild(line);
     } else if (slot === 'whisper') {
       // 配图（shared 生成的 <img> + 共用样式）：先看图再读话
