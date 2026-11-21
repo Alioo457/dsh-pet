@@ -335,7 +335,7 @@ function landingPage(port: number): string {
   <h2>宠物</h2><ul>${petLines}</ul>
   <h2>配置文件</h2>
   <p><code>${escapeHtml(String(info.configFile))}</code></p>
-  <p>改完配置后从托盘退出、重新打开应用即可生效（本模式没有「重载配置」菜单）。</p>
+  <p>手动修改文件后，在桌宠设置的「配置」页底部点击「重载配置」。</p>
   <h2>桌宠设置</h2>
   <p>桌宠配置页需要令牌，请<strong>右键桌宠 →「打开桌宠设置」</strong>，会直接打开已授权的页面。</p>
   <h2>状态</h2>

@@ -132,6 +132,22 @@ async function loadAi() {
   }
 }
 
+async function reloadPetConfig() {
+  const button = byId('pet-reload');
+  const status = byId('pet-reload-status');
+  button.disabled = true;
+  setStatus(status, '正在请求重载…');
+  try {
+    const result = await callApi('POST', '/reload');
+    if (!result?.reloading) throw new Error(result?.message || '桌宠未接受重载请求。');
+    setStatus(status, '已请求重载，桌宠将按已保存的配置重建。', 'ok');
+  } catch (error) {
+    setStatus(status, error.message, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function boot() {
   wireTabs();
   selectTab(DESKTOP_ONLY ? 'config' : 'chat');
@@ -141,6 +157,7 @@ function boot() {
   mountProtocolSelect();
   wireAiPanel();
   byId('pet-save').addEventListener('click', savePets);
+  if (DESKTOP_ONLY) byId('pet-reload')?.addEventListener('click', reloadPetConfig);
   window.addEventListener('beforeunload', (event) => {
     if (!state.dirty) return;
     event.preventDefault();

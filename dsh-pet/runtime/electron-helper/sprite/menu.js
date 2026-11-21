@@ -39,14 +39,13 @@ Object.assign(PetSprite.prototype, {
       if (this.sleeping) tools.push({ label: '起来', action: 'wake', hint: S.SLEEP_HOTKEY_HINT });
       else tools.push({ label: '睡觉', action: 'sleep', hint: S.SLEEP_HOTKEY_HINT });
     }
-    // 动作树之后是维护类：显示位置 → 重载配置 → 回到初始位置。
+    // 独立应用的重载入口在配置页底部，其他 Helper 保留右键入口。
     const tail = [
       // 显示位置（仅网页/仅桌面/两者/都不）：改这只宠物的 display 配置，由宿主重载生效。
       // 与浏览器端注入同一份子菜单，两端文案与取值不会漂移。不就地开关窗：窗口是进程启动时按
       // DSH_PET_PETS 一次性建的，就地增删既改不了磁盘配置也改不了窗口数量。
       S.displayMenuBranch(),
-      // 重载配置：请宿主重启桌面 Helper，全部窗口按最新配置重建。维护动作，排在回到初始位置之前。
-      { label: '重载配置', action: 'reload' },
+      ...(CONFIG.appMode ? [] : [{ label: '重载配置', action: 'reload' }]),
       { label: '回到初始位置', action: 'home' },
     ];
     // 第三方菜单项统一收在「更多」下：label 唯一的直接平铺，label 重名的按 owner 分子菜单。

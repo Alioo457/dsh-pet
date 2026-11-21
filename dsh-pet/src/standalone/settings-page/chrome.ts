@@ -64,6 +64,7 @@ ${desktopOnly ? '' : `<div class="testRow"><button id="test-btn" class="btn" typ
 <p id="privacy" class="fineprint">所有配置与密钥仅保存在当前机器。</p>
 <div class="footer"><p class="status" id="status" role="status" aria-live="polite">正在读取本机设置…</p><button id="save" class="btn primary" type="submit" disabled>保存</button></div>
 </form>
+${desktopOnly ? '<div class="footer"><p class="status" id="pet-reload-status" role="status" aria-live="polite">重新读取磁盘上已保存的配置。</p><button class="btn" id="pet-reload" type="button">重载配置</button></div>' : ''}
 </div>
 </section>
 ${

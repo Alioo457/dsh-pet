@@ -217,6 +217,7 @@ const petWindows = createWindows({
   dpi,
   helperDir: __dirname,
   isBridge: BRIDGE,
+  appMode: APP_MODE,
   openTarget: OPEN_TARGET,
   platform: TRAY_PLATFORM,
   shouldReassertTopmost,

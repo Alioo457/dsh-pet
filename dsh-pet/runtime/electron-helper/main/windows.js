@@ -23,6 +23,7 @@ const POINTER_POLL_MS = 60;
  * @param deps.dpi - DPI/指针能力（petScale 与 currentPointer）。
  * @param deps.helperDir - runtime/electron-helper 的绝对目录（index.html、preload.js、图标都在里面）。
  * @param deps.isBridge - 是否 bridge 模式（渲染端据此切换协议地址）。
+ * @param deps.appMode - 是否独立 Electron 应用。
  * @param deps.openTarget - 菜单首项的去向（desktop 唤起应用 / standalone 本机设置页 / web 站点）。
  * @param deps.platform - 托盘与置顶的平台差异（tray-platform.js 的判定）。
  * @param deps.shouldReassertTopmost - 看门狗的纯判定。
@@ -36,6 +37,7 @@ function createWindows({
   dpi,
   helperDir,
   isBridge,
+  appMode,
   openTarget,
   platform,
   shouldReassertTopmost,
@@ -288,6 +290,7 @@ function createWindows({
     return {
       configUrl: process.env.DSH_PET_CONFIG_URL || 'http://127.0.0.1:3080/dsh-pet-7340/config',
       bridge: isBridge ? '1' : '0',
+      appMode: appMode ? '1' : '0',
       openTarget,
       scale: String(scale),
       petIndex: String(pet.index),

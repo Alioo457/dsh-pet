@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { validateSettings, publicSettings } from './settings.ts';
 import { settingsPage, settingsScript, settingsStyle } from './settings-page.ts';
+import { renderSettingsPage } from './settings-page/chrome.ts';
 
 /** 记录到的一条请求。 */
 type RecordedRequest = {
@@ -173,6 +174,7 @@ async function setupPage(desktopOnly = false): Promise<Page> {
     },
     fetch: async (url: string, options: RecordedRequest['options']) => {
       requests.push({ url, options });
+      if (url === '/dsh-pet-7340/reload') return { ok: true, status: 200, json: async () => ({ reloading: true }) };
       if (url === '/standalone-ai/models') {
         return {
           ok: true,
@@ -343,6 +345,26 @@ test('启动：地址片段被清掉，密钥框清空并显示已保存', async
     page.aiRequests().every(({ options }) => options.headers['X-DSH-Pet-Token'] === 'process-capability'),
     'AI 请求必须带本次运行的访问令牌',
   );
+});
+
+test('桌宠独立配置页在最后提供重载按钮，沿用已鉴权的 POST 接口', async () => {
+  const html = renderSettingsPage(true);
+  const start = html.indexOf('id="panel-config"');
+  const configPanel = html.slice(start, html.indexOf('</section>', start));
+  assert.match(configPanel, /<\/form>\s*<div class="footer">[^\n]+id="pet-reload"[^\n]+<\/div>\s*<\/div>\s*$/);
+  assert.doesNotMatch(settingsPage, /id="pet-reload"/);
+
+  const page = await setupPage(true);
+  const first = page.requests.length;
+  await page.element('pet-reload').listeners.click();
+  const requests = page.requests.slice(first);
+  assert.deepEqual(
+    requests.map(({ url, options }) => [url, options.method]),
+    [['/dsh-pet-7340/reload', 'POST']],
+  );
+  assert.equal(requests[0]?.options.headers['X-DSH-Pet-Token'], 'process-capability');
+  assert.equal(requests[0]?.options.body, undefined);
+  assert.match(page.element('pet-reload-status').textContent, /已请求重载/);
 });
 
 test('独立桌面版仅提交余额密钥相关字段，保留旧模型和语音服务设置原值', async () => {
