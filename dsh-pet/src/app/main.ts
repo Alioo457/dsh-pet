@@ -21,8 +21,10 @@ import { configPathsFor } from '../standalone/options.ts';
 import { createRequestSecurity } from '../standalone/request-security.ts';
 
 import { installDesktopAuth, type DesktopSession } from './desktop-auth.ts';
+import { subscribeCodexWorkStatus } from './codex-status.ts';
 import { startRouter } from './router.ts';
 import { ROUTE_SEGMENT } from '../shared/constants.ts';
+import type { DesktopWorkStatusSubscription } from '../host/work-status.ts';
 
 /**
  * `electron` 由 Electron 运行时提供，不是本包依赖；只声明实际用到的成员。
@@ -114,6 +116,12 @@ async function boot(): Promise<void> {
   });
 
   context.ctx.petDesktopOnly = true;
+  const localAppData = process.env.LOCALAPPDATA;
+  if (process.platform === 'win32' && localAppData) {
+    const directory = join(localAppData, 'dsh-pet', 'codex-status');
+    const subscribe: DesktopWorkStatusSubscription = (onChange) => subscribeCodexWorkStatus(directory, onChange);
+    context.ctx.subscribeCodexWorkStatus = subscribe;
+  }
 
   const server = await startRouter(routes, { security, ai, log, status, landingPage });
   port = server.port;

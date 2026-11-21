@@ -21,7 +21,8 @@ import { ensurePowerContextMemory } from './memory/powercontext.ts';
 import { createSessionNotify } from './plugin/session-notify.ts';
 import { createPetLookup } from './plugin/pet-lookup.ts';
 import { createDownloadReport } from './plugin/download-report.ts';
-import { createWorkStatusBridge } from './plugin/work-status-bridge.ts';
+import { CODEX_WORK_SESSION, createWorkStatusBridge } from './plugin/work-status-bridge.ts';
+import type { DesktopWorkStatusSubscription, HostWorkStatusState } from './work-status.ts';
 import { registerTodoReminders } from './plugin/todo-reminders.ts';
 import { DEEPSEEK_OFFICIAL_PROVIDER_ID } from './balance/providers/deepseek-official.ts';
 import { ensureDeepseekAsrProvider } from './voice/builtin-deepseek-asr.ts';
@@ -270,6 +271,31 @@ export function apply(ctx: any): void {
     stopHelper,
     stopWorkStatusFlush,
   });
+
+  const subscribeCodex: DesktopWorkStatusSubscription | undefined = ctx.petDesktopOnly
+    ? ctx.subscribeCodexWorkStatus
+    : undefined;
+  if (subscribeCodex) {
+    const labels: Record<HostWorkStatusState, string> = {
+      thinking: 'Codex 正在思考',
+      working: 'Codex 正在执行',
+      result: 'Codex 正在处理结果',
+      waiting: 'Codex 等待确认',
+      success: 'Codex 本轮结束',
+      error: 'Codex 遇到错误',
+    };
+    ctx.effect(() =>
+      subscribeCodex((status) => {
+        if (status === null) {
+          if (workStatus.clear(CODEX_WORK_SESSION)) publishWorkStatus();
+          return;
+        }
+        workStatus.setState(CODEX_WORK_SESSION, status, nextExternalWorkSeq());
+        workStatus.setTask(CODEX_WORK_SESSION, labels[status]);
+        publishWorkStatus();
+      }),
+    );
+  }
 
   // 路由就绪后拉起桌面 Helper（Electron 缺失时仅告警，不影响 DSH 与浏览器 overlay）
   startHelper();

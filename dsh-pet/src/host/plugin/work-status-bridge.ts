@@ -7,6 +7,9 @@
  */
 import type { HostSetup } from './setup.ts';
 
+/** 独立 Windows 桌宠的 Codex 工作状态槽。 */
+export const CODEX_WORK_SESSION = 'desktop:codex';
+
 /** 工作状态桥的输入：轮询快照、工作状态 store，以及判定「外部槽」用的哨兵会话 id。 */
 export type WorkStatusBridgeInput = Pick<HostSetup, 'state' | 'workStatus' | 'EXTERNAL_WORK_SESSION'>;
 
@@ -53,8 +56,9 @@ export function createWorkStatusBridge(deps: WorkStatusBridgeInput) {
     publishedWork = key;
     publishedState = snap.state;
     publishedWorkAt = Date.now();
-    // 外部槽（`api`）不是真实 DSH 会话：这里写成 null，客户端才不会把气泡做成一个点了没反应的入口。
-    const sessionId = snap.sessionId === null || snap.sessionId === EXTERNAL_WORK_SESSION ? null : snap.sessionId;
+    // 外部来源写成 null，气泡只跳转到真实的 DSH 会话。
+    const sessionId =
+      snap.sessionId === EXTERNAL_WORK_SESSION || snap.sessionId === CODEX_WORK_SESSION ? null : snap.sessionId;
     state.writeSection('workStatus', { state: snap.state, task: snap.task, sessionId });
   };
 

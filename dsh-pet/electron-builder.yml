@@ -35,6 +35,9 @@ files:
   - '!node_modules/**'
 
 asar: true
+extraResources:
+  - from: scripts/codex-status.mjs
+    to: codex-status.mjs
 npmRebuild: false
 
 # 与 package.json 的 @electron/get 默认下载版本保持一致；改版本时两处一起改

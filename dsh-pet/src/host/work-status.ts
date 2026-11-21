@@ -14,6 +14,7 @@
 /** 工作状态档位（数组索引 = events.workStatus 档位；顺序与 shared/work-status.ts 一致）。 */
 export const HOST_WORK_STATUS_STATES = ['thinking', 'working', 'result', 'waiting', 'success', 'error'] as const;
 export type HostWorkStatusState = (typeof HOST_WORK_STATUS_STATES)[number];
+export type DesktopWorkStatusSubscription = (onChange: (state: HostWorkStatusState | null) => void) => () => void;
 
 /** 回合结束原因 → 档位；null = 该会话回合已结束，由调用方清理回空闲——残留上一档会让回合被
  *  打断后永远卡在 working。 */
