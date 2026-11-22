@@ -48,6 +48,75 @@ Object.assign(PetSprite.prototype, {
     }
     // 位置指令的弹簧也是自主移动：停走路时一并停掉，否则两套运动系统会同时改窗口位置。
     this.stopPosFollow();
+    this.timerReminder?.onArrival?.();
+  },
+
+  /** 提醒开始时显示气泡，移动结束后才开始计算驻留时长。 */
+  showTimerReminder({ source, id, text, target, holdMs }) {
+    if (this.timerReminder?.source === source && this.timerReminder.id === id) return;
+    this.clearTimerReminder();
+    const reminder = { source, id, text, animation: null, onArrival: null, timeout: null };
+    this.timerReminder = reminder;
+    this.renderBubble();
+    const arrive = () => {
+      if (this.timerReminder !== reminder) return;
+      reminder.onArrival = null;
+      if (holdMs !== null) {
+        reminder.timeout = window.setTimeout(() => this.clearTimerReminder(source), holdMs);
+      }
+    };
+    if (!target || this.dragState.active || this.menuOpen || this.todoOpen || this.frozen || this.sleeping) {
+      arrive();
+      return;
+    }
+
+    const mouseX = toLocal(target.x) - VIEW.x;
+    const mouseY = toLocal(target.y) - VIEW.y;
+    const area = this.confineToScreen
+      ? S.resolveRect(WORK_AREAS, this.currentCenterX(), this.currentCenterY())
+      : S.resolveRect(WORK_AREAS, mouseX, mouseY);
+    if (!area) {
+      arrive();
+      return;
+    }
+    // 让身体命中区的中心对准光标，贴边时给身体和气泡留出显示空间。
+    const hit = this.hitRect;
+    const halfBubble = this.bubble.offsetWidth / 2;
+    const minX = area.x + Math.max(-hit.x, halfBubble - this.halfW);
+    const maxX = area.x + area.width - Math.max(hit.x + hit.w, this.halfW + halfBubble);
+    const minY = area.y + Math.max(-hit.y, this.bubble.offsetHeight - this.size * 0.108);
+    const maxY = area.y + area.height - hit.y - hit.h;
+    const x = Math.max(minX, Math.min(mouseX - hit.x - hit.w / 2, maxX));
+    const y = Math.max(minY, Math.min(mouseY - hit.y - hit.h / 2, maxY));
+    const dx = x - this.pos.x;
+    const distance = Math.hypot(dx, y - this.pos.y);
+    const duration = Math.min(target.maxTravelMs, Math.max(250, distance * 2));
+    this.moveToCenter((x + this.halfW) / VIEW.w, (y + this.halfH) / VIEW.h, 'line', duration, arrive);
+    reminder.onArrival = arrive;
+    const animation = '原地漂浮踏步';
+    if (this.animations.moves.actions.some((action) => action.name === animation)) {
+      if (Math.abs(dx) > 1) this.facing = dx < 0 ? 'left' : 'right';
+      reminder.animation = animation;
+      this.switchTo(animation, false);
+    }
+  },
+
+  clearTimerReminder(source) {
+    const reminder = this.timerReminder;
+    if (!reminder || (source && reminder.source !== source)) return;
+    this.timerReminder = null;
+    if (reminder.timeout !== null) window.clearTimeout(reminder.timeout);
+    if (reminder.onArrival) this.stopMove();
+    this.renderBubble();
+    if (
+      reminder.animation &&
+      this.anim === reminder.animation &&
+      !this.dragState.active &&
+      !this.frozen &&
+      !this.sleeping
+    ) {
+      if (!this.resumeWorkStatusAnim()) this.playIdle();
+    }
   },
 
   // 拖拽抛掷物理（弹簧跟手 + 甩抛 + 重力反弹）
@@ -196,7 +265,7 @@ Object.assign(PetSprite.prototype, {
    * （duration <= 0 等同 instant）。用户正按着宠物时整拍静默丢弃——手指底下的东西不该跑。
    * 归一化空间是工作区并集的外接矩形，落点会被夹到 AREAS 并集（空洞不可达）。
    */
-  moveToCenter(rx, ry, mode, duration) {
+  moveToCenter(rx, ry, mode, duration, onArrival) {
     if (this.dragState.active) return; // 用户交互优先
     this.stopThrow(); // 先显式接管：停掉飞行与走路（stopMove 顺带停掉上一次的位置跟随）
     this.stopMove();
@@ -212,6 +281,7 @@ Object.assign(PetSprite.prototype, {
     if (mode === 'instant' || (mode === 'line' && duration <= 0)) {
       this.sendBounds(px, py);
       this.customPos = { rx: fx, ry: fy };
+      onArrival?.();
       return;
     }
     const token = ++this.posFollowToken;
@@ -228,6 +298,7 @@ Object.assign(PetSprite.prototype, {
           this.posFollow = null;
           this.sendBounds(px, py);
           this.customPos = { rx: fx, ry: fy };
+          onArrival?.();
           return;
         }
         this.sendBounds(fromX + (px - fromX) * p, fromY + (py - fromY) * p);

@@ -55,12 +55,19 @@ function readReminder(file: string, defaults: SavedReminder, now: () => number):
 interface IntervalReminderOptions {
   file: string;
   defaultMessage: string;
+  noticeDuration?: number;
   now?: () => number;
   onNotice?: (notice: IntervalReminderNotice | null) => void;
 }
 
 /** Track one wall-clock interval for the desktop app, independent of open renderer windows. */
-export function createIntervalReminder({ file, defaultMessage, now = Date.now, onNotice }: IntervalReminderOptions) {
+export function createIntervalReminder({
+  file,
+  defaultMessage,
+  noticeDuration = INTERVAL_NOTICE_MS,
+  now = Date.now,
+  onNotice,
+}: IntervalReminderOptions) {
   let saved = readReminder(
     file,
     { enabled: false, intervalMinutes: 60, message: defaultMessage, startedAt: null },
@@ -103,7 +110,7 @@ export function createIntervalReminder({ file, defaultMessage, now = Date.now, o
     if (!canNotify || nextAt === null || time < nextAt) return;
     // After suspension, emit one reminder and start a full interval from this actual notification.
     commit({ ...saved, startedAt: time });
-    currentNotice = { text: saved.message, until: time + INTERVAL_NOTICE_MS };
+    currentNotice = { text: saved.message, until: time + noticeDuration };
     onNotice?.(currentNotice);
   };
 

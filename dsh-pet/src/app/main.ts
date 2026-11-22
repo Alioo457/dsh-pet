@@ -38,9 +38,18 @@ import type { DesktopWorkStatusSubscription } from '../host/work-status.ts';
  * `electron` 由 Electron 运行时提供，不是本包依赖；只声明实际用到的成员。
  * 静态 `import 'electron'` 会让 `tsc --noEmit` 找不到类型而整仓变红。
  */
+interface ReminderTarget {
+  x: number;
+  y: number;
+  maxTravelMs: number;
+}
+
+type DesktopPomodoroView = PomodoroView & { target: ReminderTarget | null };
+type DesktopIntervalNotice = IntervalReminderNotice & { target: ReminderTarget | null; holdMs: number };
+
 interface DesktopViewEvents {
-  'pet:pomodoro': PomodoroView;
-  'pet:interval-reminder': IntervalReminderNotice | null;
+  'pet:pomodoro': DesktopPomodoroView;
+  'pet:interval-reminder': DesktopIntervalNotice | null;
   'pet:codex-quota': string;
 }
 interface WebContentsLike {
@@ -61,10 +70,21 @@ interface ElectronApp {
   on(event: 'second-instance', listener: () => void): void;
   on(event: 'will-quit', listener: () => void): void;
 }
-const { app, BrowserWindow, session } = createRequire(import.meta.url)('electron') as {
+const { app, BrowserWindow, session, screen, ipcMain } = createRequire(import.meta.url)('electron') as {
   app: ElectronApp;
   BrowserWindow: { getAllWindows(): Array<{ webContents: WebContentsLike }> };
   session: { defaultSession: DesktopSession };
+  screen: { getCursorScreenPoint(): { x: number; y: number } };
+  ipcMain: {
+    on(
+      event: 'pet:pomodoro-advance',
+      listener: (
+        event: { sender: WebContentsLike; senderFrame: { url: string } | null },
+        phase: unknown,
+        endsAt: unknown,
+      ) => void,
+    ): void;
+  };
 };
 
 /** 包根目录：与 helper-process.ts 的 packageRoot 同一口径（模块所在目录的上一级） */
@@ -130,19 +150,44 @@ async function boot(): Promise<void> {
   ): void => {
     if (!contents.isDestroyed() && contents.getURL().split(/[?#]/, 1)[0] === rendererUrl) contents.send(channel, view);
   };
-  const showTimerBalloon = (title: string, notice: IntervalReminderNotice): void => {
+  const maxTravelMs = 4_000;
+  const reminderWindowMs = INTERVAL_NOTICE_MS + maxTravelMs;
+  const captureReminderTarget = (): ReminderTarget => ({ ...screen.getCursorScreenPoint(), maxTravelMs });
+  const showTimerBalloon = (title: string, text: string): void => {
     (
       globalThis as { __dshPetShowBalloon?: (title: string, content: string, until: number) => void }
-    ).__dshPetShowBalloon?.(title, notice.text, notice.until);
+    ).__dshPetShowBalloon?.(title, text, Date.now() + INTERVAL_NOTICE_MS);
   };
+  let pomodoroTarget: ReminderTarget | null = null;
+  let pomodoroTravelUntil = 0;
   const pomodoro = createPomodoro({
     file: join(dshHomeDir(), 'dsh-pet', 'pomodoro.json'),
-    onChange(view, announcement) {
-      for (const window of BrowserWindow.getAllWindows()) sendDesktopView(window.webContents, 'pet:pomodoro', view);
-      if (announcement && view.notice) showTimerBalloon('番茄钟', view.notice);
+    onChange(view, announced) {
+      if (!view.notice) {
+        pomodoroTarget = null;
+        pomodoroTravelUntil = 0;
+      }
+      if (announced && view.notice) {
+        pomodoroTarget = captureReminderTarget();
+        pomodoroTravelUntil = Date.now() + maxTravelMs;
+        showTimerBalloon('番茄钟', view.notice.text);
+      }
+      for (const window of BrowserWindow.getAllWindows())
+        sendDesktopView(window.webContents, 'pet:pomodoro', { ...view, target: pomodoroTarget });
     },
   });
+  ipcMain.on('pet:pomodoro-advance', (event, phase, endsAt) => {
+    const url = event.sender.getURL();
+    if (event.senderFrame?.url !== url || url.split(/[?#]/, 1)[0] !== rendererUrl) return;
+    if (new URL(url).searchParams.get('petIndex') !== '0') return;
+    try {
+      pomodoro.advance(phase, endsAt);
+    } catch {
+      log('无法保存番茄钟进度，可再次单击确认');
+    }
+  });
   let intervalCooldownUntil = 0;
+  let intervalTarget: ReminderTarget | null = null;
   const intervalReminders = [
     { id: 'sitting-reminder', title: '久坐提醒', defaultMessage: '该起来活动一下啦！' },
     { id: 'water-reminder', title: '喝水提醒', defaultMessage: '该喝水啦！' },
@@ -150,24 +195,26 @@ async function boot(): Promise<void> {
     const timer = createIntervalReminder({
       file: join(dshHomeDir(), 'dsh-pet', id + '.json'),
       defaultMessage,
+      noticeDuration: reminderWindowMs,
       onNotice(notice) {
+        if (notice) {
+          intervalTarget = captureReminderTarget();
+          intervalCooldownUntil = notice.until;
+          showTimerBalloon(title, notice.text);
+        }
         // Turning one reminder off leaves the other one's current bubble intact.
         const active = activeIntervalNotice();
         for (const window of BrowserWindow.getAllWindows())
           sendDesktopView(window.webContents, 'pet:interval-reminder', active);
-        if (notice) {
-          intervalCooldownUntil = notice.until;
-          showTimerBalloon(title, notice);
-        }
       },
     });
     routes.push(intervalReminderRoute(timer, id, defaultMessage));
     return { title, timer };
   });
-  const activeIntervalNotice = (): IntervalReminderNotice | null => {
+  const activeIntervalNotice = (): DesktopIntervalNotice | null => {
     for (const { timer } of intervalReminders) {
       const notice = timer.notice();
-      if (notice) return notice;
+      if (notice) return { ...notice, target: intervalTarget, holdMs: INTERVAL_NOTICE_MS };
     }
     return null;
   };
@@ -232,7 +279,7 @@ async function boot(): Promise<void> {
       log(`渲染端[${level}] ${message} (${source}:${line})`);
     });
     contents.on('did-finish-load', () => {
-      sendDesktopView(contents, 'pet:pomodoro', pomodoro.snapshot());
+      sendDesktopView(contents, 'pet:pomodoro', { ...pomodoro.snapshot(), target: pomodoroTarget });
       sendDesktopView(contents, 'pet:interval-reminder', activeIntervalNotice());
       if (codexQuota) sendDesktopView(contents, 'pet:codex-quota', codexQuota.currentLine());
     });
@@ -259,8 +306,8 @@ async function boot(): Promise<void> {
       // Keep the existing phase alert on schedule and leave each new alert enough time to be read.
       const phase = pomodoro.snapshot();
       const now = Date.now();
-      const pomodoroSoon = phase.endsAt !== null && phase.endsAt - now < INTERVAL_NOTICE_MS;
-      if (phase.notice || pomodoroSoon || now < intervalCooldownUntil) return;
+      const pomodoroSoon = !phase.waiting && phase.endsAt !== null && phase.endsAt - now < reminderWindowMs;
+      if (pomodoroSoon || now < pomodoroTravelUntil || now < intervalCooldownUntil) return;
       for (const { title, timer } of intervalReminders) {
         try {
           timer.tick();

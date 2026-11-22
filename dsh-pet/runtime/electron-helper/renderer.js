@@ -84,11 +84,11 @@ async function boot() {
     }
     for (const s of sprites) s.dispose();
     sprites = [new PetSprite(pet)];
-    refreshPomodoroBubble();
-    refreshIntervalReminderBubble();
     window.__dshPetDebug.configOk = true;
     window.__dshPetDebug.spriteCount = sprites.length;
     for (const s of sprites) s.playIdle();
+    refreshPomodoroBubble();
+    refreshIntervalReminderBubble();
     startLoops();
   } catch (e) {
     const msg = '配置加载失败：' + (e && e.message ? String(e.message) : String(e));
@@ -112,30 +112,38 @@ window.petBridge?.onCodexQuota?.((line) => {
 let pomodoroView = null;
 let pomodoroTicker = null;
 
-/** 倒计时只用第一只桌宠已有的气泡。其他气泡在显示时只更新暂存文字。 */
+/** 第一只桌宠负责提示；计时中只在气泡空闲时显示剩余时间。 */
 function refreshPomodoroBubble() {
   const pet = sprites[0];
   if (!pet || CONFIG.petIndex !== 0) return;
+  if (pomodoroView?.notice) {
+    const pending = { phase: pomodoroView.phase, id: pomodoroView.endsAt, text: pomodoroView.notice.text };
+    if (pet.pomodoroPending?.phase === pending.phase && pet.pomodoroPending.id === pending.id) return;
+    pet.pomodoroText = '';
+    pet.pomodoroPending = pending;
+    pet.showTimerReminder({
+      source: 'pomodoro',
+      ...pending,
+      target: pomodoroView.target,
+      holdMs: null,
+    });
+    return;
+  }
   const now = Date.now();
-  const announcing = pomodoroView?.notice?.until > now;
   let text = '';
-  if (announcing) {
-    text = pomodoroView.notice.text;
-  } else if (pomodoroView?.phase) {
+  if (pomodoroView?.phase) {
     const seconds = Math.max(0, Math.ceil((pomodoroView.endsAt - now) / 1000));
     const minutes = String(Math.floor(seconds / 60)).padStart(2, '0');
     const rest = String(seconds % 60).padStart(2, '0');
     text = (pomodoroView.phase === 'focus' ? '专注 ' : '休息 ') + minutes + ':' + rest;
   }
-  if (pet.pomodoroText === text && pet.pomodoroNoticeActive === announcing) return;
+  const changed = pet.pomodoroText !== text;
   pet.pomodoroText = text;
-  pet.pomodoroNoticeActive = announcing;
-  if (
-    !pet.todoOpen &&
-    (pet.bubbleSlot === 'none' ||
-      pet.bubbleSlot === 'pomodoro' ||
-      (announcing && pet.bubbleSlot === 'interval-reminder'))
-  )
+  if (pet.pomodoroPending) {
+    pet.pomodoroPending = null;
+    if (pet.timerReminder?.source === 'pomodoro') pet.clearTimerReminder('pomodoro');
+    else pet.renderBubble();
+  } else if (changed && !pet.todoOpen && (pet.bubbleSlot === 'none' || pet.bubbleSlot === 'pomodoro'))
     pet.renderBubble();
 }
 
@@ -144,36 +152,35 @@ window.petBridge?.onPomodoro?.((view) => {
   pomodoroView = view;
   refreshPomodoroBubble();
   if (pomodoroTicker !== null) window.clearInterval(pomodoroTicker);
-  pomodoroTicker = view.phase ? window.setInterval(refreshPomodoroBubble, 1000) : null;
+  pomodoroTicker = view.phase && !view.notice ? window.setInterval(refreshPomodoroBubble, 1000) : null;
 });
 
 let intervalReminderNotice = null;
-let intervalReminderTimeout = null;
+let shownIntervalUntil = null;
 
 function refreshIntervalReminderBubble() {
   const pet = sprites[0];
   if (!pet || CONFIG.petIndex !== 0) return;
-  const text = intervalReminderNotice?.until > Date.now() ? intervalReminderNotice.text : '';
-  if (pet.intervalReminderText === text) return;
-  pet.intervalReminderText = text;
-  if (!pet.todoOpen && ['none', 'pomodoro', 'interval-reminder'].includes(pet.bubbleSlot)) pet.renderBubble();
+  const notice = intervalReminderNotice;
+  if (!notice) {
+    pet.clearTimerReminder('interval');
+    return;
+  }
+  if (notice.until <= Date.now() || shownIntervalUntil === notice.until) return;
+  shownIntervalUntil = notice.until;
+  pet.showTimerReminder({
+    source: 'interval',
+    id: notice.until,
+    text: notice.text,
+    target: notice.target,
+    holdMs: notice.holdMs,
+  });
 }
 
 window.petBridge?.onIntervalReminder?.((notice) => {
   if (CONFIG.petIndex !== 0) return;
-  if (intervalReminderTimeout !== null) window.clearTimeout(intervalReminderTimeout);
   intervalReminderNotice = notice;
   refreshIntervalReminderBubble();
-  intervalReminderTimeout = notice
-    ? window.setTimeout(
-        () => {
-          intervalReminderNotice = null;
-          intervalReminderTimeout = null;
-          refreshIntervalReminderBubble();
-        },
-        Math.max(0, notice.until - Date.now()),
-      )
-    : null;
 });
 
 // 注入打字资源：气泡字体 + 点击/拖拽光标图标（与浏览器同一套素材，host 经 /dsh-pet-7340/ 提供）

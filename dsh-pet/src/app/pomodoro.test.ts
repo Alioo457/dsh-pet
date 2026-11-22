@@ -8,7 +8,7 @@ import { createPomodoro, parsePomodoroSettings, type PomodoroView } from './pomo
 
 const minute = 60_000;
 
-test('番茄钟默认停止，手动开始后交替专注和休息并保存准确的截止时间', (t) => {
+test('番茄钟到点后持续等待确认，重新启动也保留等待状态', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-pomodoro-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, 'pomodoro.json');
@@ -30,14 +30,24 @@ test('番茄钟默认停止，手动开始后交替专注和休息并保存准�
 
   now = started.endsAt!;
   timer.tick();
-  assert.equal(timer.snapshot().phase, 'break');
-  assert.equal(timer.snapshot().endsAt, now + minute);
+  const waiting = timer.snapshot();
+  assert.equal(waiting.phase, 'focus');
+  assert.equal(waiting.endsAt, started.endsAt);
   assert.equal(updates[updates.length - 1]?.notice?.text, '专注结束，休息一下吧。');
-  assert.equal(JSON.parse(readFileSync(file, 'utf8')).phase, 'break');
+  assert.equal(JSON.parse(readFileSync(file, 'utf8')).waiting, true);
   now += 8 * minute;
   timer.tick();
-  assert.equal(timer.snapshot().phase, 'focus');
-  assert.equal(timer.snapshot().endsAt, now + 2 * minute, '唤醒只进入下一阶段一次');
+  assert.deepEqual(timer.snapshot(), waiting);
+  timer = createPomodoro({ file, now: () => now, onChange: (view) => updates.push(view) });
+  assert.deepEqual(timer.snapshot(), waiting);
+  assert.equal(timer.advance('focus', started.endsAt! - 1), false, '旧提示不可确认当前阶段');
+  assert.equal(timer.advance('focus', started.endsAt!), true);
+  assert.equal(timer.advance('focus', started.endsAt!), false, '重复点击不会重复切换或重置计时');
+  assert.equal(timer.snapshot().phase, 'break');
+  assert.equal(timer.snapshot().endsAt, now + minute);
+  assert.equal(timer.snapshot().notice, undefined);
+  now += minute;
+  timer.tick();
   assert.equal(updates[updates.length - 1]?.notice?.text, '休息结束，开始下一轮专注。');
   timer.configure({ ...settings, enabled: false });
   assert.equal(timer.snapshot().phase, null);
@@ -57,6 +67,7 @@ test('修改时长从下一阶段生效，损坏配置可以重新保存', (t) =
   assert.equal(timer.snapshot().endsAt, started.endsAt);
   now = started.endsAt!;
   timer.tick();
+  assert.equal(timer.advance('focus', started.endsAt!), true);
   assert.equal(timer.snapshot().endsAt, now + 4 * minute);
 });
 

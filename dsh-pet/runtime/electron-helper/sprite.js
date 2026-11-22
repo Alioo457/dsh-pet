@@ -84,6 +84,8 @@ class PetSprite {
     if (this.bubbleTimer !== null) window.clearTimeout(this.bubbleTimer);
     if (this.whisperTimer !== null) window.clearTimeout(this.whisperTimer);
     if (this.workTimer !== null) window.clearTimeout(this.workTimer);
+    if (this.timerReminder?.timeout != null) window.clearTimeout(this.timerReminder.timeout);
+    this.timerReminder = null;
     this.closeMenu();
     this.stopThrow();
     this.stopDragFollow();

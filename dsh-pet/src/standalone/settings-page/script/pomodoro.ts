@@ -31,6 +31,10 @@ function mountPomodoro() {
       countdown.textContent = model ? '计时已停止' : '';
       return;
     }
+    if (model.waiting) {
+      countdown.textContent = model.phase === 'focus' ? '专注已结束，左键单击桌宠开始休息。' : '休息已结束，左键单击桌宠开始专注。';
+      return;
+    }
     const seconds = Math.max(0, Math.ceil((model.endsAt - Date.now()) / 1000));
     countdown.textContent =
       (model.phase === 'focus' ? '专注中 ' : '休息中 ') +

@@ -50,10 +50,12 @@ Object.assign(PetSprite.prototype, {
     window.__dshPetDebug.tooltipOn = this.tipOn;
   },
   renderBubble() {
-    // 待办面板占气泡槽且优先级最高：它是用户主动打开的窗口，其余气泡一律让位。
-    // 面板是外部塞进来的 DOM，重建 innerHTML 会把它自己抹掉，所以这一段只补显隐与让位。
-    this.bubble.classList.toggle('dsh-pet-todo-bubble', this.todoOpen);
-    if (this.todoOpen) {
+    // 到点提醒期间保留待办节点，提醒结束后接回原面板。
+    const hasReminder = this.pomodoroPending || this.timerReminder;
+    const showTodo = this.todoOpen && !hasReminder;
+    this.bubble.classList.toggle('dsh-pet-todo-bubble', showTodo);
+    if (showTodo) {
+      if (this.todoPanel?.el.parentElement !== this.bubble) this.bubble.replaceChildren(this.todoPanel.el);
       this.bubble.classList.remove('is-whisper', 'is-clickable', 'is-expanded', S.MEME_BUBBLE_CLASS);
       this.bubble.classList.add('is-on');
       window.__dshPetDebug.lastBubbleTitle = '待办事项';
@@ -69,14 +71,9 @@ Object.assign(PetSprite.prototype, {
     const balanceOn = !!(this.bubbleOn && this.balanceView);
     const envOn = !!(this.envOn && this.envState);
     const workTerminal = this.workState === 'success' || this.workState === 'error';
-    const timerSlot =
-      this.intervalReminderText && !this.pomodoroNoticeActive
-        ? 'interval-reminder'
-        : this.pomodoroText
-          ? 'pomodoro'
-          : 'none';
-    const slot =
-      workTerminal && workOn
+    const slot = hasReminder
+      ? 'timer-reminder'
+      : workTerminal && workOn
         ? 'work'
         : whisperOn
           ? 'whisper'
@@ -86,7 +83,9 @@ Object.assign(PetSprite.prototype, {
               ? 'env'
               : workOn
                 ? 'work'
-                : timerSlot;
+                : this.pomodoroText
+                  ? 'pomodoro'
+                  : 'none';
     // 记住当前槽位：点击处理在 init.js，必须知道「现在显示的是哪一种气泡」才能分清翻页与跳会话。
     this.bubbleSlot = slot;
     // 配图两种形态二选一：url 用完整地址，image 按素材根拼表情包路径；样式/class 共用。
@@ -119,12 +118,17 @@ Object.assign(PetSprite.prototype, {
       return;
     }
     this.bubble.innerHTML = '';
-    if (slot === 'work' || slot === 'pomodoro' || slot === 'interval-reminder') {
+    if (slot === 'work' || slot === 'pomodoro' || slot === 'timer-reminder') {
       const line = document.createElement('div');
       line.className = 'pet-bub-row';
-      line.textContent =
-        slot === 'work' ? this.workText : slot === 'pomodoro' ? this.pomodoroText : this.intervalReminderText;
+      line.textContent = slot === 'work' ? this.workText : slot === 'pomodoro' ? this.pomodoroText : hasReminder.text;
       this.bubble.appendChild(line);
+      if (slot === 'timer-reminder' && this.pomodoroPending && this.timerReminder?.source === 'interval') {
+        const interval = document.createElement('div');
+        interval.className = 'pet-bub-row';
+        interval.textContent = this.timerReminder.text;
+        this.bubble.appendChild(interval);
+      }
       if (slot === 'work' && this.workFromCodex) {
         const quota = document.createElement('div');
         quota.className = 'pet-bub-row';

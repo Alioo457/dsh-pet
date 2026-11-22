@@ -249,6 +249,7 @@ Object.assign(PetSprite.prototype, {
 
   // 动画链（纯逻辑在 shared）
   playIdle() {
+    if (this.timerReminder && (this.timerReminder.onArrival || this.timerReminder.animation === this.anim)) return;
     // 占用锁：锁生效时不掷骰。这里是随机链的唯一入口（动画播完才会走到），一句判断就把随机动画、
     // 随机转向与自主走位一起停住——宠物停在最后一帧，等持锁者的下一条指令（走 /anim，不经这里）。
     if (this.frozen) return;

@@ -6,7 +6,7 @@ import type { RegisteredRoute } from '../standalone/context.ts';
 import { sendJson } from '../standalone/server/respond.ts';
 
 type Phase = 'focus' | 'break';
-type Cycle = { phase: Phase; endsAt: number } | { phase: null; endsAt: null };
+type Cycle = { phase: Phase; endsAt: number; waiting?: true } | { phase: null; endsAt: null; waiting?: never };
 
 export interface PomodoroSettings {
   enabled: boolean;
@@ -15,10 +15,9 @@ export interface PomodoroSettings {
 }
 
 type SavedPomodoro = Omit<PomodoroSettings, 'enabled'> & Cycle;
-export type PomodoroView = SavedPomodoro & { notice?: { text: string; until: number } };
+export type PomodoroView = SavedPomodoro & { notice?: { text: string } };
 
 const MINUTE_MS = 60_000;
-const NOTICE_MS = 10_000;
 const DEFAULTS: SavedPomodoro = { focusMinutes: 25, breakMinutes: 5, phase: null, endsAt: null };
 
 export function parsePomodoroSettings(raw: unknown): PomodoroSettings | null {
@@ -42,7 +41,7 @@ function readPomodoro(file: string): SavedPomodoro {
     const { focusMinutes, breakMinutes } = settings;
     const { phase, endsAt } = saved;
     if ((phase === 'focus' || phase === 'break') && typeof endsAt === 'number' && Number.isSafeInteger(endsAt))
-      return { focusMinutes, breakMinutes, phase, endsAt };
+      return { focusMinutes, breakMinutes, phase, endsAt, ...(saved.waiting === true ? { waiting: true } : {}) };
     return { focusMinutes, breakMinutes, phase: null, endsAt: null };
   } catch {
     // A missing or unreadable file leaves the optional timer stopped.
@@ -53,15 +52,20 @@ function readPomodoro(file: string): SavedPomodoro {
 interface PomodoroOptions {
   file: string;
   now?: () => number;
-  onChange?: (view: PomodoroView, announcement?: string) => void;
+  onChange?: (view: PomodoroView, announced?: boolean) => void;
 }
 
 /** The app process owns one cycle. Renderer reloads do not affect deadlines. */
 export function createPomodoro({ file, now = Date.now, onChange }: PomodoroOptions) {
   let saved = readPomodoro(file);
-  let notice: PomodoroView['notice'];
 
-  const snapshot = (): PomodoroView => (notice && notice.until > now() ? { ...saved, notice } : { ...saved });
+  const snapshot = (): PomodoroView =>
+    saved.waiting
+      ? {
+          ...saved,
+          notice: { text: saved.phase === 'focus' ? '专注结束，休息一下吧。' : '休息结束，开始下一轮专注。' },
+        }
+      : { ...saved };
   const commit = (next: SavedPomodoro): void => {
     mkdirSync(dirname(file), { recursive: true });
     writePrivateJson(file, next);
@@ -76,26 +80,34 @@ export function createPomodoro({ file, now = Date.now, onChange }: PomodoroOptio
       ? { phase: null, endsAt: null }
       : saved.phase === null
         ? { phase: 'focus', endsAt: now() + focusMinutes * MINUTE_MS }
-        : { phase: saved.phase, endsAt: saved.endsAt };
+        : { phase: saved.phase, endsAt: saved.endsAt, ...(saved.waiting ? { waiting: true } : {}) };
     commit({ focusMinutes, breakMinutes, ...cycle });
-    if (!enabled) notice = undefined;
     const view = snapshot();
     onChange?.(view);
     return view;
   };
 
   const tick = (): void => {
-    const time = now();
-    if (saved.phase === null || time < saved.endsAt) return;
-    const phase = saved.phase === 'focus' ? 'break' : 'focus';
-    const minutes = phase === 'focus' ? saved.focusMinutes : saved.breakMinutes;
-    const text = phase === 'break' ? '专注结束，休息一下吧。' : '休息结束，开始下一轮专注。';
-    commit({ ...saved, phase, endsAt: time + minutes * MINUTE_MS });
-    notice = { text, until: time + NOTICE_MS };
-    onChange?.(snapshot(), text);
+    if (saved.phase === null || saved.waiting || now() < saved.endsAt) return;
+    commit({ ...saved, waiting: true });
+    onChange?.(snapshot(), true);
   };
 
-  return { configure, snapshot, tick };
+  const advance = (completedPhase: unknown, completedAt: unknown): boolean => {
+    if (!saved.waiting || saved.phase !== completedPhase || saved.endsAt !== completedAt) return false;
+    const phase = saved.phase === 'focus' ? 'break' : 'focus';
+    const minutes = phase === 'focus' ? saved.focusMinutes : saved.breakMinutes;
+    commit({
+      focusMinutes: saved.focusMinutes,
+      breakMinutes: saved.breakMinutes,
+      phase,
+      endsAt: now() + minutes * MINUTE_MS,
+    });
+    onChange?.(snapshot());
+    return true;
+  };
+
+  return { configure, snapshot, tick, advance };
 }
 
 /** Settings use the same loopback authorization and bounded body handling as the app's other routes. */
