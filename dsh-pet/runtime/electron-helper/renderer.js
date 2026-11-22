@@ -125,7 +125,6 @@ function refreshPomodoroBubble() {
       source: 'pomodoro',
       ...pending,
       target: pomodoroView.target,
-      holdMs: null,
     });
     return;
   }
@@ -155,31 +154,31 @@ window.petBridge?.onPomodoro?.((view) => {
   pomodoroTicker = view.phase && !view.notice ? window.setInterval(refreshPomodoroBubble, 1000) : null;
 });
 
-let intervalReminderNotice = null;
-let shownIntervalUntil = null;
+let intervalReminderNotices = [];
 
 function refreshIntervalReminderBubble() {
   const pet = sprites[0];
   if (!pet || CONFIG.petIndex !== 0) return;
-  const notice = intervalReminderNotice;
-  if (!notice) {
-    pet.clearTimerReminder('interval');
-    return;
+  const previous = pet.intervalPending;
+  pet.intervalPending = intervalReminderNotices;
+  const motion = pet.timerReminder;
+  if (
+    motion &&
+    motion.source !== 'pomodoro' &&
+    !pet.intervalPending.some((notice) => notice.source === motion.source && notice.id === motion.id)
+  ) {
+    pet.clearTimerReminder(motion.source);
   }
-  if (notice.until <= Date.now() || shownIntervalUntil === notice.until) return;
-  shownIntervalUntil = notice.until;
-  pet.showTimerReminder({
-    source: 'interval',
-    id: notice.until,
-    text: notice.text,
-    target: notice.target,
-    holdMs: notice.holdMs,
-  });
+  const next = pet.intervalPending.find(
+    (notice) => notice.target && !previous.some((seen) => seen.source === notice.source && seen.id === notice.id),
+  );
+  if (next) pet.showTimerReminder(next);
+  else if (previous.length || pet.intervalPending.length) pet.renderBubble();
 }
 
-window.petBridge?.onIntervalReminder?.((notice) => {
+window.petBridge?.onIntervalReminder?.((notices) => {
   if (CONFIG.petIndex !== 0) return;
-  intervalReminderNotice = notice;
+  intervalReminderNotices = notices;
   refreshIntervalReminderBubble();
 });
 

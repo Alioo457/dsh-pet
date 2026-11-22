@@ -24,12 +24,7 @@ import { installDesktopAuth, type DesktopSession } from './desktop-auth.ts';
 import { subscribeCodexWorkStatus } from './codex-status.ts';
 import { createCodexQuotaMonitor } from './codex-quota.ts';
 import { createPomodoro, pomodoroRoute, type PomodoroView } from './pomodoro.ts';
-import {
-  createIntervalReminder,
-  intervalReminderRoute,
-  INTERVAL_NOTICE_MS,
-  type IntervalReminderNotice,
-} from './interval-reminder.ts';
+import { createIntervalReminder, intervalReminderRoute, type IntervalReminderNotice } from './interval-reminder.ts';
 import { startRouter } from './router.ts';
 import { ROUTE_SEGMENT } from '../shared/constants.ts';
 import type { DesktopWorkStatusSubscription } from '../host/work-status.ts';
@@ -45,11 +40,11 @@ interface ReminderTarget {
 }
 
 type DesktopPomodoroView = PomodoroView & { target: ReminderTarget | null };
-type DesktopIntervalNotice = IntervalReminderNotice & { target: ReminderTarget | null; holdMs: number };
+type DesktopIntervalNotice = IntervalReminderNotice & { source: string; target: ReminderTarget | null };
 
 interface DesktopViewEvents {
   'pet:pomodoro': DesktopPomodoroView;
-  'pet:interval-reminder': DesktopIntervalNotice | null;
+  'pet:interval-reminder': DesktopIntervalNotice[];
   'pet:codex-quota': string;
 }
 interface WebContentsLike {
@@ -77,11 +72,12 @@ const { app, BrowserWindow, session, screen, ipcMain } = createRequire(import.me
   screen: { getCursorScreenPoint(): { x: number; y: number } };
   ipcMain: {
     on(
-      event: 'pet:pomodoro-advance',
+      event: 'pet:acknowledge-timers',
       listener: (
         event: { sender: WebContentsLike; senderFrame: { url: string } | null },
         phase: unknown,
         endsAt: unknown,
+        intervalIds: unknown,
       ) => void,
     ): void;
   };
@@ -151,73 +147,77 @@ async function boot(): Promise<void> {
     if (!contents.isDestroyed() && contents.getURL().split(/[?#]/, 1)[0] === rendererUrl) contents.send(channel, view);
   };
   const maxTravelMs = 4_000;
-  const reminderWindowMs = INTERVAL_NOTICE_MS + maxTravelMs;
-  const captureReminderTarget = (): ReminderTarget => ({ ...screen.getCursorScreenPoint(), maxTravelMs });
+  let reminderTravelUntil = 0;
+  const captureReminderTarget = (): ReminderTarget => {
+    reminderTravelUntil = Date.now() + maxTravelMs;
+    return { ...screen.getCursorScreenPoint(), maxTravelMs };
+  };
   const showTimerBalloon = (title: string, text: string): void => {
     (
       globalThis as { __dshPetShowBalloon?: (title: string, content: string, until: number) => void }
-    ).__dshPetShowBalloon?.(title, text, Date.now() + INTERVAL_NOTICE_MS);
+    ).__dshPetShowBalloon?.(title, text, Date.now() + 10_000);
   };
   let pomodoroTarget: ReminderTarget | null = null;
-  let pomodoroTravelUntil = 0;
   const pomodoro = createPomodoro({
     file: join(dshHomeDir(), 'dsh-pet', 'pomodoro.json'),
     onChange(view, announced) {
-      if (!view.notice) {
-        pomodoroTarget = null;
-        pomodoroTravelUntil = 0;
-      }
+      if (!view.notice) pomodoroTarget = null;
       if (announced && view.notice) {
         pomodoroTarget = captureReminderTarget();
-        pomodoroTravelUntil = Date.now() + maxTravelMs;
         showTimerBalloon('番茄钟', view.notice.text);
       }
       for (const window of BrowserWindow.getAllWindows())
         sendDesktopView(window.webContents, 'pet:pomodoro', { ...view, target: pomodoroTarget });
     },
   });
-  ipcMain.on('pet:pomodoro-advance', (event, phase, endsAt) => {
-    const url = event.sender.getURL();
-    if (event.senderFrame?.url !== url || url.split(/[?#]/, 1)[0] !== rendererUrl) return;
-    if (new URL(url).searchParams.get('petIndex') !== '0') return;
-    try {
-      pomodoro.advance(phase, endsAt);
-    } catch {
-      log('无法保存番茄钟进度，可再次单击确认');
-    }
-  });
-  let intervalCooldownUntil = 0;
-  let intervalTarget: ReminderTarget | null = null;
   const intervalReminders = [
     { id: 'sitting-reminder', title: '久坐提醒', defaultMessage: '该起来活动一下啦！' },
     { id: 'water-reminder', title: '喝水提醒', defaultMessage: '该喝水啦！' },
   ].map(({ id, title, defaultMessage }) => {
+    let target: ReminderTarget | null = null;
     const timer = createIntervalReminder({
       file: join(dshHomeDir(), 'dsh-pet', id + '.json'),
       defaultMessage,
-      noticeDuration: reminderWindowMs,
-      onNotice(notice) {
-        if (notice) {
-          intervalTarget = captureReminderTarget();
-          intervalCooldownUntil = notice.until;
+      onNotice(notice, announced) {
+        if (!notice) target = null;
+        if (announced && notice) {
+          target = captureReminderTarget();
           showTimerBalloon(title, notice.text);
         }
-        // Turning one reminder off leaves the other one's current bubble intact.
-        const active = activeIntervalNotice();
+        const active = activeIntervalNotices();
         for (const window of BrowserWindow.getAllWindows())
           sendDesktopView(window.webContents, 'pet:interval-reminder', active);
       },
     });
     routes.push(intervalReminderRoute(timer, id, defaultMessage));
-    return { title, timer };
+    return { id, title, timer, getTarget: () => target };
   });
-  const activeIntervalNotice = (): DesktopIntervalNotice | null => {
-    for (const { timer } of intervalReminders) {
+  const activeIntervalNotices = (): DesktopIntervalNotice[] =>
+    intervalReminders.flatMap(({ id, timer, getTarget }) => {
       const notice = timer.notice();
-      if (notice) return { ...notice, target: intervalTarget, holdMs: INTERVAL_NOTICE_MS };
+      return notice ? [{ ...notice, source: id, target: getTarget() }] : [];
+    });
+  ipcMain.on('pet:acknowledge-timers', (event, phase, endsAt, intervalIds) => {
+    const url = event.sender.getURL();
+    if (event.senderFrame?.url !== url || url.split(/[?#]/, 1)[0] !== rendererUrl) return;
+    if (new URL(url).searchParams.get('petIndex') !== '0') return;
+    const clickedAt = Date.now();
+    try {
+      pomodoro.advance(phase, endsAt);
+    } catch {
+      log('无法保存番茄钟进度，可再次单击确认');
     }
-    return null;
-  };
+    if (!intervalIds || typeof intervalIds !== 'object') return;
+    const ids = intervalIds as Record<string, unknown>;
+    for (const { id, title, timer } of intervalReminders) {
+      if (!Object.prototype.hasOwnProperty.call(ids, id)) continue;
+      try {
+        timer.acknowledge(ids[id], clickedAt);
+      } catch {
+        log('无法保存' + title + '进度，可再次单击确认');
+      }
+    }
+  });
   routes.push(pomodoroRoute(pomodoro));
 
   // 与 CLI 同一套安全模型：令牌只经「配置页地址的 #token=」递给浏览器，不进日志
@@ -280,7 +280,7 @@ async function boot(): Promise<void> {
     });
     contents.on('did-finish-load', () => {
       sendDesktopView(contents, 'pet:pomodoro', { ...pomodoro.snapshot(), target: pomodoroTarget });
-      sendDesktopView(contents, 'pet:interval-reminder', activeIntervalNotice());
+      sendDesktopView(contents, 'pet:interval-reminder', activeIntervalNotices());
       if (codexQuota) sendDesktopView(contents, 'pet:codex-quota', codexQuota.currentLine());
     });
   });
@@ -303,15 +303,14 @@ async function boot(): Promise<void> {
       } catch {
         log('无法保存番茄钟进度，将重试');
       }
-      // Keep the existing phase alert on schedule and leave each new alert enough time to be read.
+      // Give each reminder time to reach the cursor before starting another trip.
       const phase = pomodoro.snapshot();
       const now = Date.now();
-      const pomodoroSoon = !phase.waiting && phase.endsAt !== null && phase.endsAt - now < reminderWindowMs;
-      if (pomodoroSoon || now < pomodoroTravelUntil || now < intervalCooldownUntil) return;
+      const pomodoroSoon = !phase.waiting && phase.endsAt !== null && phase.endsAt - now < maxTravelMs;
+      if (pomodoroSoon || now < reminderTravelUntil) return;
       for (const { title, timer } of intervalReminders) {
         try {
-          timer.tick();
-          if (timer.notice()) return;
+          if (timer.tick()) return;
         } catch {
           log('无法保存' + title + '进度，将重试');
         }

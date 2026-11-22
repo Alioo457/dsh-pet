@@ -81,8 +81,8 @@ contextBridge.exposeInMainWorld('petBridge', {
   onPomodoro(cb) {
     ipcRenderer.on('pet:pomodoro', (_event, view) => cb(view));
   },
-  advancePomodoro(phase, endsAt) {
-    ipcRenderer.send('pet:pomodoro-advance', phase, endsAt);
+  acknowledgeTimers(pomodoro, intervals) {
+    ipcRenderer.send('pet:acknowledge-timers', pomodoro?.phase, pomodoro?.id, intervals);
   },
   onIntervalReminder(cb) {
     ipcRenderer.on('pet:interval-reminder', (_event, notice) => cb(notice));

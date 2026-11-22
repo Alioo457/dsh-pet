@@ -13,7 +13,7 @@ function renderIntervalReminderPanel(id: string, title: string, defaultMessage: 
   return `<section class="panel" id="panel-${id}" role="tabpanel" aria-labelledby="tab-${id}" hidden>
 <div class="scroll">
 <form class="card" id="${id}-form">
-<label class="rowCheck"><input id="${id}-enabled" type="checkbox" disabled><span class="rowCheckText"><span class="rowCheckTitle">启用${title}</span><span class="rowCheckHint">桌宠按设定间隔提醒，重新打开桌宠后续算。</span></span></label>
+<label class="rowCheck"><input id="${id}-enabled" type="checkbox" disabled><span class="rowCheckText"><span class="rowCheckTitle">启用${title}</span><span class="rowCheckHint">到点后左键单击桌宠关闭提醒，并开始下一轮计时。</span></span></label>
 <div class="field"><label for="${id}-interval">提醒间隔（分钟）</label><input id="${id}-interval" type="number" min="5" max="300" step="1" value="60" required disabled></div>
 <div class="field"><label for="${id}-message">提示语</label><input id="${id}-message" type="text" maxlength="80" placeholder="${defaultMessage}" disabled></div>
 <div class="testRow"><button class="btn primary" id="${id}-save" type="submit" disabled>保存提醒</button><p class="status" id="${id}-status" role="status" aria-live="polite"></p></div>

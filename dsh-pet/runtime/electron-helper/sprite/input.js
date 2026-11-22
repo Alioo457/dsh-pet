@@ -377,8 +377,9 @@ Object.assign(PetSprite.prototype, {
       if (window.petBridge) window.petBridge.openDshSite(ORIGIN);
       return;
     }
-    if (e.button === 0 && this.pomodoroPending) {
-      window.petBridge?.advancePomodoro(this.pomodoroPending.phase, this.pomodoroPending.id);
+    if (e.button === 0 && (this.pomodoroPending || this.intervalPending.length)) {
+      const intervals = Object.fromEntries(this.intervalPending.map(({ source, id }) => [source, id]));
+      window.petBridge?.acknowledgeTimers(this.pomodoroPending, intervals);
       return;
     }
     // 积分判定已在 onPointerDown（按下即触发）完成：已触发过就只收手停住，不再播普通点击动画

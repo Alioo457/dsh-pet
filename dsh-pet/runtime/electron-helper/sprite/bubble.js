@@ -51,7 +51,9 @@ Object.assign(PetSprite.prototype, {
   },
   renderBubble() {
     // 到点提醒期间保留待办节点，提醒结束后接回原面板。
-    const hasReminder = this.pomodoroPending || this.timerReminder;
+    const reminders = this.intervalPending.map((notice) => notice.text);
+    if (this.pomodoroPending) reminders.unshift(this.pomodoroPending.text);
+    const hasReminder = reminders.length > 0;
     const showTodo = this.todoOpen && !hasReminder;
     this.bubble.classList.toggle('dsh-pet-todo-bubble', showTodo);
     if (showTodo) {
@@ -119,15 +121,12 @@ Object.assign(PetSprite.prototype, {
     }
     this.bubble.innerHTML = '';
     if (slot === 'work' || slot === 'pomodoro' || slot === 'timer-reminder') {
-      const line = document.createElement('div');
-      line.className = 'pet-bub-row';
-      line.textContent = slot === 'work' ? this.workText : slot === 'pomodoro' ? this.pomodoroText : hasReminder.text;
-      this.bubble.appendChild(line);
-      if (slot === 'timer-reminder' && this.pomodoroPending && this.timerReminder?.source === 'interval') {
-        const interval = document.createElement('div');
-        interval.className = 'pet-bub-row';
-        interval.textContent = this.timerReminder.text;
-        this.bubble.appendChild(interval);
+      const lines = slot === 'timer-reminder' ? reminders : [slot === 'work' ? this.workText : this.pomodoroText];
+      for (const text of lines) {
+        const line = document.createElement('div');
+        line.className = 'pet-bub-row';
+        line.textContent = text;
+        this.bubble.appendChild(line);
       }
       if (slot === 'work' && this.workFromCodex) {
         const quota = document.createElement('div');

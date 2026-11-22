@@ -102,8 +102,9 @@ Object.assign(PetSprite.prototype, {
     this.workState = null; // 最近一次工作状态（互动/事件动画播完恢复档位循环用）
     this.workSessionId = null; // 当前展示条目所属会话：有值才让工作气泡可点（点了跳过去）
     this.pomodoroText = ''; // 已启用且通知槽空闲时，显示阶段和剩余时间。
-    this.pomodoroPending = null; // 等待左键确认的阶段提示，可与久坐或喝水提醒同时显示。
-    this.timerReminder = null; // 最近一次提醒的移动与驻留。
+    this.pomodoroPending = null; // 等待左键确认的阶段提示。
+    this.intervalPending = []; // 久坐和喝水各自等待确认。
+    this.timerReminder = null; // 当前提醒所使用的移动与动画。
     this.bubbleSlot = 'none'; // 当前显示的气泡槽位（renderBubble 写）：点击处理据此分清翻页与跳会话
     this.prevWorkState = null; // 上一档状态（气泡只在状态变化时点亮/收起）
     this.prevWorkTick = 0;

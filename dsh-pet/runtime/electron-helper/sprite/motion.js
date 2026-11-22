@@ -51,19 +51,16 @@ Object.assign(PetSprite.prototype, {
     this.timerReminder?.onArrival?.();
   },
 
-  /** 提醒开始时显示气泡，移动结束后才开始计算驻留时长。 */
-  showTimerReminder({ source, id, text, target, holdMs }) {
+  /** 显示提醒并走到光标处，确认前保留提醒动画。 */
+  showTimerReminder({ source, id, target }) {
     if (this.timerReminder?.source === source && this.timerReminder.id === id) return;
     this.clearTimerReminder();
-    const reminder = { source, id, text, animation: null, onArrival: null, timeout: null };
+    const reminder = { source, id, animation: null, onArrival: null };
     this.timerReminder = reminder;
     this.renderBubble();
     const arrive = () => {
       if (this.timerReminder !== reminder) return;
       reminder.onArrival = null;
-      if (holdMs !== null) {
-        reminder.timeout = window.setTimeout(() => this.clearTimerReminder(source), holdMs);
-      }
     };
     if (!target || this.dragState.active || this.menuOpen || this.todoOpen || this.frozen || this.sleeping) {
       arrive();
@@ -105,7 +102,6 @@ Object.assign(PetSprite.prototype, {
     const reminder = this.timerReminder;
     if (!reminder || (source && reminder.source !== source)) return;
     this.timerReminder = null;
-    if (reminder.timeout !== null) window.clearTimeout(reminder.timeout);
     if (reminder.onArrival) this.stopMove();
     this.renderBubble();
     if (

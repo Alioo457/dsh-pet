@@ -46,7 +46,32 @@ test('启用后的第一轮从完整间隔开始，重启保留计时起点', (t
   now += minute;
   timer.tick();
   assert.equal(events[0]?.text, '离开椅子活动一下');
-  assert.equal(timer.snapshot().nextAt, now + 5 * minute);
+  assert.equal(timer.snapshot().waiting, true);
+  assert.equal(timer.snapshot().nextAt, null);
+});
+
+test('提醒等左键确认，重启后仍等待，新一轮从确认时起算', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'dsh-reminder-confirm-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const file = join(directory, 'water-reminder.json');
+  let now = minute;
+  const make = () => createIntervalReminder({ file, defaultMessage, now: () => now });
+  const timer = make();
+  timer.configure(settings);
+  now += 5 * minute;
+  timer.tick();
+  const pending = timer.notice();
+  assert.ok(pending);
+  now += 30 * minute;
+  timer.tick();
+  const restored = make();
+  assert.deepEqual(restored.notice(), pending);
+  assert.equal(restored.snapshot().nextAt, null);
+  assert.equal(restored.acknowledge(pending.id - 1), false);
+  assert.equal(restored.acknowledge(pending.id), true);
+  assert.equal(restored.acknowledge(pending.id), false);
+  assert.equal(restored.notice(), null);
+  assert.equal(make().snapshot().nextAt, now + 5 * minute);
 });
 
 test('逾期只补一次提示，暂缓期间保留到期提醒，停用立即取消', (t) => {

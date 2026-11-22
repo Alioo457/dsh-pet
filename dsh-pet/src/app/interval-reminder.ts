@@ -6,7 +6,6 @@ import type { RegisteredRoute } from '../standalone/context.ts';
 import { sendJson } from '../standalone/server/respond.ts';
 
 const MINUTE_MS = 60_000;
-export const INTERVAL_NOTICE_MS = 10_000;
 
 interface IntervalReminderSettings {
   enabled: boolean;
@@ -16,11 +15,12 @@ interface IntervalReminderSettings {
 
 interface SavedReminder extends IntervalReminderSettings {
   startedAt: number | null;
+  waitingSince: number | null;
 }
 
 export interface IntervalReminderNotice {
   text: string;
-  until: number;
+  id: number;
 }
 
 export function parseIntervalReminderSettings(raw: unknown, defaultMessage: string): IntervalReminderSettings | null {
@@ -46,7 +46,15 @@ function readReminder(file: string, defaults: SavedReminder, now: () => number):
     if (!settings) return defaults;
     const value = raw.startedAt;
     const start = typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : now();
-    return { ...settings, startedAt: settings.enabled ? start : null };
+    const waiting = raw.waitingSince;
+    return {
+      ...settings,
+      startedAt: settings.enabled ? start : null,
+      waitingSince:
+        settings.enabled && typeof waiting === 'number' && Number.isSafeInteger(waiting) && waiting >= 0
+          ? waiting
+          : null,
+    };
   } catch {
     return defaults;
   }
@@ -55,33 +63,27 @@ function readReminder(file: string, defaults: SavedReminder, now: () => number):
 interface IntervalReminderOptions {
   file: string;
   defaultMessage: string;
-  noticeDuration?: number;
   now?: () => number;
-  onNotice?: (notice: IntervalReminderNotice | null) => void;
+  onNotice?: (notice: IntervalReminderNotice | null, announced?: boolean) => void;
 }
 
 /** Track one wall-clock interval for the desktop app, independent of open renderer windows. */
-export function createIntervalReminder({
-  file,
-  defaultMessage,
-  noticeDuration = INTERVAL_NOTICE_MS,
-  now = Date.now,
-  onNotice,
-}: IntervalReminderOptions) {
+export function createIntervalReminder({ file, defaultMessage, now = Date.now, onNotice }: IntervalReminderOptions) {
   let saved = readReminder(
     file,
-    { enabled: false, intervalMinutes: 60, message: defaultMessage, startedAt: null },
+    { enabled: false, intervalMinutes: 60, message: defaultMessage, startedAt: null, waitingSince: null },
     now,
   );
-  let currentNotice: IntervalReminderNotice | null = null;
   const deadline = (): number | null =>
-    saved.startedAt === null ? null : saved.startedAt + saved.intervalMinutes * MINUTE_MS;
+    saved.startedAt === null || saved.waitingSince !== null
+      ? null
+      : saved.startedAt + saved.intervalMinutes * MINUTE_MS;
   const snapshot = () => {
-    const { enabled, intervalMinutes, message } = saved;
-    return { enabled, intervalMinutes, message, nextAt: deadline() };
+    const { enabled, intervalMinutes, message, waitingSince } = saved;
+    return { enabled, intervalMinutes, message, nextAt: deadline(), waiting: waitingSince !== null };
   };
   const notice = (): IntervalReminderNotice | null =>
-    currentNotice && currentNotice.until > now() ? currentNotice : null;
+    saved.waitingSince === null ? null : { text: saved.message, id: saved.waitingSince };
 
   const commit = (next: SavedReminder): void => {
     mkdirSync(dirname(file), { recursive: true });
@@ -96,25 +98,33 @@ export function createIntervalReminder({
       settings.message === saved.message
     )
       return snapshot();
-    commit({ ...settings, startedAt: settings.enabled ? (saved.startedAt ?? now()) : null });
-    if (!settings.enabled && currentNotice) {
-      currentNotice = null;
-      onNotice?.(null);
-    }
+    const wasWaiting = saved.waitingSince !== null;
+    commit({
+      ...settings,
+      startedAt: settings.enabled ? (saved.startedAt ?? now()) : null,
+      waitingSince: settings.enabled ? saved.waitingSince : null,
+    });
+    if (wasWaiting) onNotice?.(notice());
     return snapshot();
   };
 
-  const tick = (canNotify = true): void => {
+  const tick = (canNotify = true): boolean => {
     const time = now();
     const nextAt = deadline();
-    if (!canNotify || nextAt === null || time < nextAt) return;
-    // After suspension, emit one reminder and start a full interval from this actual notification.
-    commit({ ...saved, startedAt: time });
-    currentNotice = { text: saved.message, until: time + noticeDuration };
-    onNotice?.(currentNotice);
+    if (!canNotify || nextAt === null || time < nextAt) return false;
+    commit({ ...saved, waitingSince: time });
+    onNotice?.(notice(), true);
+    return true;
   };
 
-  return { configure, snapshot, tick, notice };
+  const acknowledge = (id: unknown, clickedAt = now()): boolean => {
+    if (saved.waitingSince === null || saved.waitingSince !== id) return false;
+    commit({ ...saved, startedAt: clickedAt, waitingSince: null });
+    onNotice?.(null);
+    return true;
+  };
+
+  return { configure, snapshot, tick, notice, acknowledge };
 }
 
 export function intervalReminderRoute(
